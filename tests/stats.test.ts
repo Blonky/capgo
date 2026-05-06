@@ -589,6 +589,51 @@ describe('[POST] /stats', () => {
 })
 
 describe('rollout trigger metadata', () => {
+  it('records version usage failures only for production devices', async () => {
+    const shortId = randomUUID().split('-')[0]
+    const appId = `${APP_NAME}.rollout.failcohort.${shortId}`
+    await resetAndSeedAppData(appId)
+    await resetAndSeedAppDataStats(appId)
+    const supabase = getSupabaseClient()
+
+    try {
+      const version = await createAppVersions(`1.0.0-failcohort-${shortId}.1`, appId)
+      const cases = [
+        { deviceId: randomUUID().toLowerCase(), isEmulator: true, isProd: true },
+        { deviceId: randomUUID().toLowerCase(), isEmulator: false, isProd: false },
+        { deviceId: randomUUID().toLowerCase(), isEmulator: false, isProd: true },
+      ]
+
+      for (const item of cases) {
+        const baseData = getBaseData(appId) as StatsPayload
+        baseData.action = 'update_fail'
+        baseData.device_id = item.deviceId
+        baseData.version_build = version.name
+        baseData.version_name = version.name
+        baseData.is_emulator = item.isEmulator
+        baseData.is_prod = item.isProd
+
+        const response = await postStats(baseData)
+        const responseData = await response.json<StatsRes>()
+        expect(response.status, JSON.stringify(responseData)).toBe(200)
+        expect(responseData).toEqual({ status: 'ok' })
+      }
+
+      const { data, error } = await supabase
+        .from('version_usage')
+        .select('action')
+        .eq('app_id', appId)
+        .eq('version_name', version.name)
+        .eq('action', 'fail')
+
+      expect(error).toBeNull()
+      expect(data).toHaveLength(1)
+    }
+    finally {
+      await resetAppData(appId)
+      await resetAppDataStats(appId)
+    }
+  })
   it('preserves explicit auto-pause rollback metadata when clearing rollout version', async () => {
     const shortId = randomUUID().split('-')[0]
     const appId = `${APP_NAME}.rollout.trigger.${shortId}`

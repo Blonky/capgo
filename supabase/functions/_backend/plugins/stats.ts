@@ -145,8 +145,8 @@ async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClien
       || greaterOrEqual(parse(plugin_version), parse('7.17.0'))
       || (plugin_version.startsWith('6.') && greaterOrEqual(parse(plugin_version), parse('6.14.25')))
 
-    if (shouldCountDownloadFail) {
-      // Use versionOnly from the request body and resolve channel overrides only when configured.
+    if (shouldCountDownloadFail && !device.is_emulator && device.is_prod) {
+      // Keep version_usage fail and install cohorts aligned for rollout auto-pause.
       await createStatsVersion(c, versionOnly, app_id, 'fail', await getEffectiveStatsChannelName())
       cloudlog({ requestId: c.get('requestId'), message: 'FAIL!' })
       // Daily fail ratio emails are now sent via cron job that checks aggregate stats
