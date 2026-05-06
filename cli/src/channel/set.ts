@@ -336,6 +336,36 @@ export async function setChannelInternal(channel: string, appId: string, options
 
   if (rolloutBundle != null) {
     const data = await findRemoteBundle(rolloutBundle)
+
+    if (!options.ignoreMetadataCheck) {
+      const { finalCompatibility, localDependencies } = await checkCompatibilityNativePackages(
+        supabase,
+        appId,
+        channel,
+        (data.native_packages as any) ?? [],
+      )
+
+      const incompatiblePackages = finalCompatibility.filter(item => !isCompatible(item))
+
+      if (localDependencies.length > 0 && incompatiblePackages.length > 0) {
+        if (!silent) {
+          log.warn(`Rollout bundle NOT compatible with ${channel} channel`)
+          log.warn('')
+          displayCompatibilityTable(finalCompatibility)
+          log.warn('')
+          log.warn('An app store update may be required for these changes to take effect.')
+        }
+        throw new Error(`Rollout bundle is not compatible with ${channel} channel`)
+      }
+
+      if (!silent) {
+        if (localDependencies.length === 0 && finalCompatibility.length > 0)
+          log.info(`Ignoring check compatibility with ${channel} channel because the rollout bundle does not contain any native packages`)
+        else
+          log.info(`Rollout bundle is compatible with ${channel} channel`)
+      }
+    }
+
     channelPayload.rollout_version = data.id
     if (rolloutEnable == null)
       channelPayload.rollout_enabled = true
