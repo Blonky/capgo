@@ -756,10 +756,10 @@ export function requestInfosPostgres(
   device_id: string,
   defaultChannel: string,
   drizzleClient: ReturnType<typeof getDrizzleClient>,
-  channelDeviceCount?: number | null,
-  manifestBundleCount?: number | null,
-  rolloutChannelCount?: number | null,
-  currentVersionName = '',
+  channelDeviceCount: number | null | undefined,
+  manifestBundleCount: number | null | undefined,
+  rolloutChannelCount: number | null | undefined,
+  currentVersionName: string,
   includeMetadata = false,
 ) {
   const shouldQueryChannelOverride = channelDeviceCount === undefined || channelDeviceCount === null ? true : channelDeviceCount > 0

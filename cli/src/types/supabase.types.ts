@@ -2718,6 +2718,7 @@ export type Database = {
         Row: {
           action: Database["public"]["Enums"]["version_action"]
           app_id: string
+          channel_name: string | null
           timestamp: string
           version_id: number | null
           version_name: string | null
@@ -2725,6 +2726,7 @@ export type Database = {
         Insert: {
           action: Database["public"]["Enums"]["version_action"]
           app_id: string
+          channel_name?: string | null
           timestamp?: string
           version_id?: number | null
           version_name?: string | null
@@ -2732,6 +2734,7 @@ export type Database = {
         Update: {
           action?: Database["public"]["Enums"]["version_action"]
           app_id?: string
+          channel_name?: string | null
           timestamp?: string
           version_id?: number | null
           version_name?: string | null
@@ -4243,7 +4246,7 @@ export type Database = {
         }[]
       }
       read_version_usage: {
-        Args: { p_app_id: string; p_period_end: string; p_period_start: string }
+        Args: { p_app_id: string; p_channel_name?: string | null; p_period_end: string; p_period_start: string }
         Returns: {
           app_id: string
           date: string

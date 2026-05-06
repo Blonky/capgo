@@ -208,6 +208,56 @@ describe('version_name statistics tracking', () => {
     expect(result.app_id).toBe(appId)
   })
 
+  it('should filter read_version_usage by channel_name', async () => {
+    const supabase = getSupabaseClient()
+    const now = new Date()
+    const startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const endDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+
+    await supabase
+      .from('version_usage')
+      .insert([
+        {
+          app_id: appId,
+          version_name: versionName,
+          action: 'install',
+          timestamp: now.toISOString(),
+          channel_name: 'production',
+        },
+        {
+          app_id: appId,
+          version_name: versionName,
+          action: 'install',
+          timestamp: now.toISOString(),
+          channel_name: 'beta',
+        },
+        {
+          app_id: appId,
+          version_name: versionName,
+          action: 'fail',
+          timestamp: now.toISOString(),
+          channel_name: 'beta',
+        },
+      ])
+      .throwOnError()
+
+    const { data, error } = await supabase.rpc('read_version_usage', {
+      p_app_id: appId,
+      p_period_start: startDate.toISOString().replace('T', ' ').replace('Z', ''),
+      p_period_end: endDate.toISOString().replace('T', ' ').replace('Z', ''),
+      p_channel_name: 'production',
+    })
+
+    expect(error).toBeNull()
+    expect(data).toBeTruthy()
+    expect(data!.length).toBeGreaterThan(0)
+
+    const installs = data!.reduce((total, row) => total + Number(row.install ?? 0), 0)
+    const failures = data!.reduce((total, row) => total + Number(row.fail ?? 0), 0)
+    expect(installs).toBe(1)
+    expect(failures).toBe(0)
+  })
+
   it('should handle daily_version upsert with version_name correctly', async () => {
     const supabase = getSupabaseClient()
 

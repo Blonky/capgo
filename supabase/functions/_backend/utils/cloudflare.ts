@@ -140,12 +140,12 @@ export function trackBandwidthUsageCF(c: Context, device_id: string, app_id: str
   return Promise.resolve()
 }
 
-export function trackVersionUsageCF(c: Context, version_name: string, app_id: string, action: string) {
+export function trackVersionUsageCF(c: Context, version_name: string, app_id: string, action: string, channelName?: string | null) {
   if (!c.env.VERSION_USAGE)
     return Promise.resolve()
 
   c.env.VERSION_USAGE.writeDataPoint({
-    blobs: [app_id, version_name, action],
+    blobs: [app_id, version_name, action, channelName ?? ''],
     indexes: [app_id],
   })
 
@@ -480,11 +480,13 @@ interface StoreApp {
   developer_id?: string // Optional as it's not NOT NULL
 }
 
-export async function readStatsVersionCF(c: Context, app_id: string, period_start: string, period_end: string): Promise<VersionUsage[]> {
+export async function readStatsVersionCF(c: Context, app_id: string, period_start: string, period_end: string, channelName?: string): Promise<VersionUsage[]> {
   if (!c.env.VERSION_USAGE)
     return []
-  // Note: blob2 contains version_name for new data and version_id (numeric) for old data
-  // The cron job handles backwards compatibility by detecting numeric values
+  // Note: blob2 contains version_name for new data and version_id (numeric) for old data.
+  // blob4 contains channel_name only for newer data.
+  const safeChannelName = channelName ? escapeSqlString(channelName) : ''
+  const channelFilter = safeChannelName ? `AND blob4 = '${safeChannelName}'` : ''
   const query = `SELECT
   blob1 as app_id,
   blob2 as version_name,
@@ -498,6 +500,7 @@ WHERE
   app_id = '${escapeSqlString(app_id)}'
   AND timestamp >= toDateTime('${formatDateCF(period_start)}')
   AND timestamp < toDateTime('${formatDateCF(period_end)}')
+  ${channelFilter}
 GROUP BY date, app_id, version_name
 ORDER BY date`
 

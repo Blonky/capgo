@@ -41,6 +41,22 @@ interface ChannelSet {
   autoPauseCooldownMinutes?: number
 }
 
+function validateIntegerRange(value: number | null | undefined, field: string, min: number, max: number) {
+  if (value == null)
+    return
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < min || value > max) {
+    throw simpleError('invalid_rollout_config', `${field} must be an integer between ${min} and ${max}`, { field, value, min, max })
+  }
+}
+
+function validateConfidence(value: number | undefined) {
+  if (value == null)
+    return
+  if (!Number.isFinite(value) || value <= 0 || value >= 1) {
+    throw simpleError('invalid_auto_pause_confidence', 'Auto-pause confidence must be greater than 0 and less than 1', { autoPauseConfidence: value })
+  }
+}
+
 async function findVersion(c: Context, appID: string, version: string, ownerOrg: string, apikey: Database['public']['Tables']['apikeys']['Row']) {
   const { data, error: vError } = await supabaseApikey(c, apikey.key)
     .from('app_versions')
@@ -73,10 +89,18 @@ export async function post(c: Context<MiddlewareKeyVariables>, body: ChannelSet,
     throw simpleError('invalid_app_id', 'You can\'t access this app', { app_id: body.app_id })
   }
   const inferredElectron = body.electron ?? (body.public && body.ios !== body.android ? false : undefined)
-  const rolloutPercentageBps = body.rolloutPercentageBps ?? (body.rolloutPercentage == null ? undefined : Math.round(body.rolloutPercentage * 100))
-  if (rolloutPercentageBps != null && (rolloutPercentageBps < 0 || rolloutPercentageBps > 10000)) {
-    throw simpleError('invalid_rollout_percentage', 'Rollout percentage must be between 0 and 10000 basis points', { rolloutPercentageBps })
+  if (body.rolloutPercentage != null && (!Number.isFinite(body.rolloutPercentage) || body.rolloutPercentage < 0 || body.rolloutPercentage > 100)) {
+    throw simpleError('invalid_rollout_percentage', 'Rollout percentage must be between 0 and 100', { rolloutPercentage: body.rolloutPercentage })
   }
+  const rolloutPercentageBps = body.rolloutPercentageBps ?? (body.rolloutPercentage == null ? undefined : Math.round(body.rolloutPercentage * 100))
+  validateIntegerRange(rolloutPercentageBps, 'rolloutPercentageBps', 0, 10000)
+  validateIntegerRange(body.rolloutCacheTtlSeconds, 'rolloutCacheTtlSeconds', 60, 31536000)
+  validateIntegerRange(body.autoPauseWindowMinutes, 'autoPauseWindowMinutes', 1, 10080)
+  validateIntegerRange(body.autoPauseFailureRateBps, 'autoPauseFailureRateBps', 0, 10000)
+  validateConfidence(body.autoPauseConfidence)
+  validateIntegerRange(body.autoPauseMinAttempts, 'autoPauseMinAttempts', 0, Number.MAX_SAFE_INTEGER)
+  validateIntegerRange(body.autoPauseMinFailures, 'autoPauseMinFailures', 0, Number.MAX_SAFE_INTEGER)
+  validateIntegerRange(body.autoPauseCooldownMinutes, 'autoPauseCooldownMinutes', 0, 10080)
   if (body.autoPauseAction && !['pause', 'rollback', 'notify'].includes(body.autoPauseAction)) {
     throw simpleError('invalid_auto_pause_action', 'Auto-pause action must be pause, rollback, or notify', { autoPauseAction: body.autoPauseAction })
   }

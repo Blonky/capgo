@@ -110,11 +110,11 @@ async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClien
   // device.version = appVersion.id
   if (action === 'set' && !device.is_emulator && device.is_prod) {
     // Use versionOnly (from request body) instead of appVersion - no DB read needed for stats
-    await createStatsVersion(c, versionOnly, app_id, 'install')
+    await createStatsVersion(c, versionOnly, app_id, 'install', device.default_channel)
     if (old_version_name) {
       const oldVersion = await getAppVersionPostgres(c, app_id, old_version_name, undefined, drizzleClient as ReturnType<typeof getDrizzleClient>)
       if (oldVersion && oldVersion.id !== appVersion.id) {
-        await createStatsVersion(c, old_version_name, app_id, 'uninstall')
+        await createStatsVersion(c, old_version_name, app_id, 'uninstall', device.default_channel)
         statsActions.push({ action: 'uninstall', versionName: old_version_name ?? 'unknown' })
       }
     }
@@ -127,7 +127,7 @@ async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClien
 
     if (shouldCountDownloadFail) {
       // Use versionOnly (from request body) instead of appVersion - no DB read needed for stats
-      await createStatsVersion(c, versionOnly, app_id, 'fail')
+      await createStatsVersion(c, versionOnly, app_id, 'fail', device.default_channel)
       cloudlog({ requestId: c.get('requestId'), message: 'FAIL!' })
       // Daily fail ratio emails are now sent via cron job that checks aggregate stats
       // instead of per-device notifications. See process_daily_fail_ratio_email.

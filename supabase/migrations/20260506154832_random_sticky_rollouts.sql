@@ -1,6 +1,9 @@
 ALTER TABLE "public"."apps"
 ADD COLUMN "rollout_channel_count" bigint NOT NULL DEFAULT 0;
 
+ALTER TABLE "public"."version_usage"
+ADD COLUMN "channel_name" character varying(255);
+
 ALTER TABLE "public"."channels"
 ADD COLUMN "rollout_version" bigint,
 ADD COLUMN "rollout_percentage_bps" integer NOT NULL DEFAULT 0,
@@ -183,6 +186,7 @@ BEGIN
     WHERE av.deleted = false
       AND (SELECT retention FROM public.apps WHERE apps.app_id = av.app_id) >= 0
       AND (SELECT retention FROM public.apps WHERE apps.app_id = av.app_id) < 63113904
+      AND av.name NOT IN ('builtin', 'unknown')
       AND av.created_at < (
           SELECT NOW() - make_interval(secs => apps.retention)
           FROM public.apps
@@ -198,6 +202,41 @@ END;
 $$;
 
 ALTER FUNCTION public.update_app_versions_retention() OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.update_app_versions_retention() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.update_app_versions_retention() TO service_role;
+
+DROP FUNCTION IF EXISTS public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone);
+
+CREATE OR REPLACE FUNCTION public.read_version_usage(p_app_id character varying, p_period_start timestamp without time zone, p_period_end timestamp without time zone, p_channel_name text DEFAULT NULL)
+RETURNS TABLE(app_id character varying, version_name character varying, date timestamp without time zone, "get" bigint, fail bigint, install bigint, uninstall bigint)
+LANGUAGE plpgsql
+SET search_path TO ''
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    vu.app_id,
+    COALESCE(vu.version_name, av.name)::character varying AS version_name,
+    DATE_TRUNC('day', vu.timestamp) AS date,
+    SUM(CASE WHEN vu.action = 'get' THEN 1 ELSE 0 END) AS "get",
+    SUM(CASE WHEN vu.action = 'fail' THEN 1 ELSE 0 END) AS fail,
+    SUM(CASE WHEN vu.action = 'install' THEN 1 ELSE 0 END) AS install,
+    SUM(CASE WHEN vu.action = 'uninstall' THEN 1 ELSE 0 END) AS uninstall
+  FROM public.version_usage AS vu
+  LEFT JOIN public.app_versions AS av ON vu.version_id = av.id AND vu.version_name IS NULL
+  WHERE vu.app_id = p_app_id
+    AND vu.timestamp >= p_period_start
+    AND vu.timestamp < p_period_end
+    AND (p_channel_name IS NULL OR vu.channel_name = p_channel_name)
+  GROUP BY date, vu.app_id, COALESCE(vu.version_name, av.name)
+  ORDER BY date;
+END;
+$$;
+
+ALTER FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) OWNER TO postgres;
+GRANT ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO anon;
+GRANT ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO authenticated;
+GRANT ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.delete_old_deleted_versions()
 RETURNS void

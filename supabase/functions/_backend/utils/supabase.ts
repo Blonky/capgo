@@ -1020,8 +1020,8 @@ export function trackVersionUsageSB(
   versionName: string,
   appId: string,
   action: Database['public']['Enums']['version_action'],
+  channelName?: string | null,
 ) {
-  // Type cast needed: version_usage table now has version_name but auto-generated types are stale
   return supabaseAdmin(c)
     .from('version_usage')
     .insert([
@@ -1029,7 +1029,8 @@ export function trackVersionUsageSB(
         version_name: versionName,
         app_id: appId,
         action,
-      } as unknown as { version_id: number, app_id: string, action: typeof action },
+        channel_name: channelName ?? null,
+      },
     ])
 }
 
@@ -1151,9 +1152,12 @@ export async function readStatsStorageSB(c: Context, app_id: string, period_star
   return data ?? []
 }
 
-export async function readStatsVersionSB(c: Context, app_id: string, period_start: string, period_end: string): Promise<VersionUsage[]> {
+export async function readStatsVersionSB(c: Context, app_id: string, period_start: string, period_end: string, channelName?: string): Promise<VersionUsage[]> {
+  const args = channelName
+    ? { p_app_id: app_id, p_period_start: period_start, p_period_end: period_end, p_channel_name: channelName }
+    : { p_app_id: app_id, p_period_start: period_start, p_period_end: period_end }
   const { data } = await supabaseAdmin(c)
-    .rpc('read_version_usage', { p_app_id: app_id, p_period_start: period_start, p_period_end: period_end })
+    .rpc('read_version_usage', args)
   // Cast to VersionUsage[] - the SQL function returns version_name but auto-generated types are stale
   return (data ?? []) as unknown as VersionUsage[]
 }

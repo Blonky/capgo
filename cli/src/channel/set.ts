@@ -50,6 +50,24 @@ export type { OptionsSetChannel } from '../schemas/channel'
 
 const disableAutoUpdatesPossibleOptions = ['major', 'minor', 'metadata', 'patch', 'none']
 
+function assertIntegerInRange(value: number, label: string, min: number, max: number) {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < min || value > max)
+    throw new Error(`${label} must be an integer between ${min} and ${max}`)
+}
+
+function assertOptionalIntegerInRange(value: number | null | undefined, label: string, min: number, max: number) {
+  if (value == null)
+    return
+  assertIntegerInRange(value, label, min, max)
+}
+
+function assertOptionalConfidence(value: number | undefined) {
+  if (value == null)
+    return
+  if (!Number.isFinite(value) || value <= 0 || value >= 1)
+    throw new Error('Auto-pause confidence must be a number greater than 0 and less than 1')
+}
+
 export async function setChannelInternal(channel: string, appId: string, options: OptionsSetChannel, silent = false) {
   if (!silent)
     intro('Set channel')
@@ -325,10 +343,13 @@ export async function setChannelInternal(channel: string, appId: string, options
       log.info(`Set ${appId} channel: ${channel} rollout target to @${rolloutBundle}`)
   }
 
+  if (rolloutPercentage != null) {
+    if (!Number.isFinite(rolloutPercentage) || rolloutPercentage < 0 || rolloutPercentage > 100)
+      throw new Error('Rollout percentage must be between 0 and 100')
+  }
   const finalRolloutPercentageBps = rolloutPercentageBps ?? (rolloutPercentage == null ? undefined : Math.round(rolloutPercentage * 100))
   if (finalRolloutPercentageBps != null) {
-    if (finalRolloutPercentageBps < 0 || finalRolloutPercentageBps > 10000)
-      throw new Error('Rollout percentage must be between 0 and 100')
+    assertIntegerInRange(finalRolloutPercentageBps, 'Rollout percentage basis points', 0, 10000)
     channelPayload.rollout_percentage_bps = finalRolloutPercentageBps
   }
 
@@ -366,6 +387,14 @@ export async function setChannelInternal(channel: string, appId: string, options
     channelPayload.rollout_paused_at = null
     channelPayload.rollout_pause_reason = null
   }
+
+  assertOptionalIntegerInRange(rolloutCacheTtlSeconds, 'Rollout cache TTL seconds', 60, 31536000)
+  assertOptionalIntegerInRange(autoPauseWindowMinutes, 'Auto-pause window minutes', 1, 10080)
+  assertOptionalIntegerInRange(autoPauseFailureRateBps, 'Auto-pause failure rate basis points', 0, 10000)
+  assertOptionalConfidence(autoPauseConfidence)
+  assertOptionalIntegerInRange(autoPauseMinAttempts, 'Auto-pause minimum attempts', 0, Number.MAX_SAFE_INTEGER)
+  assertOptionalIntegerInRange(autoPauseMinFailures, 'Auto-pause minimum failures', 0, Number.MAX_SAFE_INTEGER)
+  assertOptionalIntegerInRange(autoPauseCooldownMinutes, 'Auto-pause cooldown minutes', 0, 10080)
 
   if (rolloutCacheTtlSeconds != null)
     channelPayload.rollout_cache_ttl_seconds = rolloutCacheTtlSeconds

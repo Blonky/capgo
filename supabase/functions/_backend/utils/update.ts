@@ -445,7 +445,7 @@ export async function updateWithPG(
   // cloudlog(c.get('requestId'), 'save stats', device_id)
   device.version_name = version.name
   await Promise.all([
-    createStatsVersion(c, version.name, app_id, 'get'),
+    createStatsVersion(c, version.name, app_id, 'get', channelData.channels.name),
     sendStatsAndDevice(c, device, [{ action: 'get', versionName: version.name }]),
   ])
   cloudlog({ requestId: c.get('requestId'), message: 'New version available', app_id, version: version.name, signedURL, date: new Date().toISOString() })

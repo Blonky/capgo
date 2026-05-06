@@ -58,12 +58,12 @@ export function createStatsBandwidth(c: Context, device_id: string, app_id: stri
 }
 
 export type VersionAction = 'get' | 'fail' | 'install' | 'uninstall'
-export function createStatsVersion(c: Context, version_name: string, app_id: string, action: VersionAction) {
+export function createStatsVersion(c: Context, version_name: string, app_id: string, action: VersionAction, channelName?: string | null) {
   if (isInternalVersionName(version_name))
     return Promise.resolve()
   if (!c.env.VERSION_USAGE)
-    return backgroundTask(c, trackVersionUsageSB(c, version_name, app_id, action))
-  return trackVersionUsageCF(c, version_name, app_id, action)
+    return backgroundTask(c, trackVersionUsageSB(c, version_name, app_id, action, channelName))
+  return trackVersionUsageCF(c, version_name, app_id, action, channelName)
 }
 
 export function createStatsLogsExternal(c: Context, app_id: string, device_id: string, action: Database['public']['Enums']['stats_action'], versionName?: string) {
@@ -131,10 +131,10 @@ export function readStatsStorage(c: Context, app_id: string, start_date: string,
   return readStatsStorageSB(c, app_id, start_date, end_date)
 }
 
-export function readStatsVersion(c: Context, app_id: string, start_date: string, end_date: string): Promise<VersionUsage[]> {
+export function readStatsVersion(c: Context, app_id: string, start_date: string, end_date: string, channelName?: string): Promise<VersionUsage[]> {
   if (!c.env.VERSION_USAGE)
-    return readStatsVersionSB(c, app_id, start_date, end_date)
-  return readStatsVersionCF(c, app_id, start_date, end_date)
+    return readStatsVersionSB(c, app_id, start_date, end_date, channelName)
+  return readStatsVersionCF(c, app_id, start_date, end_date, channelName)
 }
 
 function shouldUseAnalyticsEngine(c: Context): boolean {

@@ -15,6 +15,7 @@ interface RolloutAutoPauseChannel {
   auto_pause_enabled: boolean
   auto_pause_failure_rate_bps: number | null
   auto_pause_last_triggered_at: string | null
+  rollout_paused_at: string | null
   auto_pause_min_attempts: number | null
   auto_pause_min_failures: number | null
   auto_pause_window_minutes: number
@@ -67,7 +68,7 @@ async function evaluateChannel(c: Parameters<typeof supabaseAdmin>[0], supabase:
     return { skipped: true, reason: 'missing_rollout_version_name' }
 
   const start = getWindowStart(channel.auto_pause_window_minutes, now)
-  const stats = await readStatsVersion(c, channel.app_id, start, now.toISOString())
+  const stats = await readStatsVersion(c, channel.app_id, start, now.toISOString(), channel.name)
   const totals = stats
     .filter(row => row.version_name === versionName)
     .reduce((acc, row) => {
@@ -146,11 +147,13 @@ app.post('/', middlewareAPISecret, async (c) => {
       auto_pause_action,
       auto_pause_cooldown_minutes,
       auto_pause_last_triggered_at,
+      rollout_paused_at,
       rollout_version_info:app_versions!channels_rollout_version_fkey(name)
     `)
     .eq('rollout_enabled', true)
     .eq('auto_pause_enabled', true)
     .not('rollout_version', 'is', null)
+    .is('rollout_paused_at', null)
 
   if (error) {
     cloudlogErr({ requestId: c.get('requestId'), message: 'Cannot load rollout auto-pause channels', error })
