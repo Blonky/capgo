@@ -557,6 +557,29 @@ export function requestInfosChannelDevicePostgres(
   return channelDevice.then(data => data.at(0))
 }
 
+export async function getEffectiveDeviceChannelNamePostgres(
+  c: Context,
+  app_id: string,
+  device_id: string,
+  fallbackChannelName: string | null | undefined,
+  drizzleClient: ReturnType<typeof getDrizzleClient>,
+) {
+  const fallback = typeof fallbackChannelName === 'string' && fallbackChannelName.trim() !== ''
+    ? fallbackChannelName
+    : null
+  const { channelDevicesAlias, channelAlias } = getAlias()
+  const channelQuery = drizzleClient
+    .select({ name: channelAlias.name })
+    .from(channelDevicesAlias)
+    .innerJoin(channelAlias, and(eq(channelDevicesAlias.channel_id, channelAlias.id), eq(channelAlias.app_id, app_id)))
+    .where(and(eq(channelDevicesAlias.device_id, device_id), eq(channelDevicesAlias.app_id, app_id)))
+    .limit(1)
+
+  cloudlog({ requestId: c.get('requestId'), message: 'stats channel override Query:', channelQuery: channelQuery.toSQL() })
+  const channel = await channelQuery.then(data => data.at(0))
+  return channel?.name ?? fallback
+}
+
 export function requestInfosChannelPostgres(
   c: Context,
   platform: string,

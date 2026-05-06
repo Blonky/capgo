@@ -138,9 +138,19 @@ AS $$
 BEGIN
   IF NEW."rollout_version" IS DISTINCT FROM OLD."rollout_version" THEN
     NEW."rollout_id" = gen_random_uuid();
-    NEW."rollout_paused_at" = NULL;
-    NEW."rollout_pause_reason" = NULL;
-    NEW."auto_pause_last_triggered_at" = NULL;
+    IF NEW."rollout_version" IS NULL THEN
+      NEW."rollout_paused_at" = NULL;
+      IF NEW."rollout_pause_reason" IS NOT DISTINCT FROM OLD."rollout_pause_reason" THEN
+        NEW."rollout_pause_reason" = NULL;
+      END IF;
+      IF NEW."auto_pause_last_triggered_at" IS NOT DISTINCT FROM OLD."auto_pause_last_triggered_at" THEN
+        NEW."auto_pause_last_triggered_at" = NULL;
+      END IF;
+    ELSE
+      NEW."rollout_paused_at" = NULL;
+      NEW."rollout_pause_reason" = NULL;
+      NEW."auto_pause_last_triggered_at" = NULL;
+    END IF;
   END IF;
 
   RETURN NEW;
