@@ -1,6 +1,21 @@
 import { z } from 'zod'
 import { optionsBaseSchema } from './base'
 
+function rejectConflictingBooleanGroup<T extends Record<string, unknown>>(value: T, ctx: z.RefinementCtx, keys: Array<keyof T>) {
+  const selected = keys.filter(key => value[key] === true)
+  if (selected.length < 2)
+    return
+
+  const first = String(selected[0])
+  for (const key of selected.slice(1)) {
+    const current = String(key)
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [current],
+      message: `"${first}" and "${current}" cannot be used together`,
+    })
+  }
+}
 // ============================================================================
 // Channel Data Schema
 // ============================================================================
@@ -83,6 +98,10 @@ export const optionsSetChannelSchema = optionsBaseSchema.extend({
   autoPauseMinFailures: z.number().int().min(0).nullable().optional(),
   autoPauseAction: z.enum(['pause', 'rollback', 'notify']).optional(),
   autoPauseCooldownMinutes: z.number().int().min(0).max(10080).optional(),
+}).superRefine((value, ctx) => {
+  rejectConflictingBooleanGroup(value, ctx, ['rolloutEnable', 'rolloutDisable'])
+  rejectConflictingBooleanGroup(value, ctx, ['rolloutPause', 'rolloutResume', 'rolloutRollback', 'rolloutPromote'])
+  rejectConflictingBooleanGroup(value, ctx, ['autoPauseEnabled', 'autoPauseDisabled'])
 })
 
 export type OptionsSetChannel = z.infer<typeof optionsSetChannelSchema>

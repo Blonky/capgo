@@ -1,6 +1,21 @@
 import { z } from 'zod'
 import { buildCredentialsSchema } from './build'
 
+function rejectConflictingBooleanGroup<T extends Record<string, unknown>>(value: T, ctx: z.RefinementCtx, keys: Array<keyof T>) {
+  const selected = keys.filter(key => value[key] === true)
+  if (selected.length < 2)
+    return
+
+  const first = String(selected[0])
+  for (const key of selected.slice(1)) {
+    const current = String(key)
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [current],
+      message: `"${first}" and "${current}" cannot be used together`,
+    })
+  }
+}
 // ============================================================================
 // SDK Result Schema
 // ============================================================================
@@ -187,7 +202,7 @@ export const addChannelOptionsSchema = z.object({
 
 export type AddChannelOptions = z.infer<typeof addChannelOptionsSchema>
 
-export const updateChannelOptionsSchema = z.object({
+export const updateChannelOptionsBaseSchema = z.object({
   channelId: z.string(),
   appId: z.string(),
   bundle: z.string().optional(),
@@ -223,6 +238,12 @@ export const updateChannelOptionsSchema = z.object({
   apikey: z.string().optional(),
   supaHost: z.string().optional(),
   supaAnon: z.string().optional(),
+})
+
+export const updateChannelOptionsSchema = updateChannelOptionsBaseSchema.superRefine((value, ctx) => {
+  rejectConflictingBooleanGroup(value, ctx, ['rolloutEnable', 'rolloutDisable'])
+  rejectConflictingBooleanGroup(value, ctx, ['rolloutPause', 'rolloutResume', 'rolloutRollback', 'rolloutPromote'])
+  rejectConflictingBooleanGroup(value, ctx, ['autoPauseEnabled', 'autoPauseDisabled'])
 })
 
 export type UpdateChannelOptions = z.infer<typeof updateChannelOptionsSchema>
