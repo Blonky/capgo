@@ -782,12 +782,14 @@ export function requestInfosPostgres(
   channelDeviceCount: number | null | undefined,
   manifestBundleCount: number | null | undefined,
   rolloutChannelCount: number | null | undefined,
+  rolloutPausedVersionNames: string[] | null | undefined,
   currentVersionName: string,
   includeMetadata = false,
 ) {
   const shouldQueryChannelOverride = channelDeviceCount === undefined || channelDeviceCount === null ? true : channelDeviceCount > 0
   const shouldFetchManifest = manifestBundleCount === undefined || manifestBundleCount === null ? true : manifestBundleCount > 0
-  const shouldUseRolloutPath = rolloutChannelCount === undefined || rolloutChannelCount === null ? false : rolloutChannelCount > 0
+  const isPausedRolloutVersion = Array.isArray(rolloutPausedVersionNames) && rolloutPausedVersionNames.includes(currentVersionName)
+  const shouldUseRolloutPath = (rolloutChannelCount ?? 0) > 0 || isPausedRolloutVersion
 
   if (!shouldUseRolloutPath) {
     const channelDevice = shouldQueryChannelOverride
@@ -837,6 +839,7 @@ export interface AppOwnerPostgresResult {
   channel_device_count: number
   manifest_bundle_count: number
   rollout_channel_count: number
+  rollout_paused_version_names: string[]
   expose_metadata: boolean
   allow_device_custom_id: boolean
 }
@@ -860,6 +863,7 @@ export async function getAppOwnerPostgres(
         channel_device_count: schema.apps.channel_device_count,
         manifest_bundle_count: schema.apps.manifest_bundle_count,
         rollout_channel_count: schema.apps.rollout_channel_count,
+        rollout_paused_version_names: schema.apps.rollout_paused_version_names,
         expose_metadata: schema.apps.expose_metadata,
         allow_device_custom_id: schema.apps.allow_device_custom_id,
         orgs: {

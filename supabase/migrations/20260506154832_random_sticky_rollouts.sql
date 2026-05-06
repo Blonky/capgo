@@ -1,5 +1,6 @@
 ALTER TABLE "public"."apps"
-ADD COLUMN "rollout_channel_count" bigint NOT NULL DEFAULT 0;
+ADD COLUMN "rollout_channel_count" bigint NOT NULL DEFAULT 0,
+ADD COLUMN "rollout_paused_version_names" character varying[] NOT NULL DEFAULT '{}'::character varying[];
 
 ALTER TABLE "public"."version_usage"
 ADD COLUMN "channel_name" character varying(255);
@@ -92,6 +93,17 @@ BEGIN
       WHERE c.app_id = p_app_id
         AND c.rollout_version IS NOT NULL
         AND c.rollout_enabled = true
+        AND c.rollout_paused_at IS NULL
+    ),
+    rollout_paused_version_names = ARRAY(
+      SELECT DISTINCT rv.name
+      FROM public.channels AS c
+      INNER JOIN public.app_versions AS rv ON rv.id = c.rollout_version AND rv.app_id = c.app_id
+      WHERE c.app_id = p_app_id
+        AND c.rollout_version IS NOT NULL
+        AND c.rollout_enabled = true
+        AND c.rollout_paused_at IS NOT NULL
+      ORDER BY rv.name
     ),
     updated_at = now()
   WHERE a.app_id = p_app_id;
@@ -170,22 +182,30 @@ EXECUTE FUNCTION "public"."refresh_channel_rollout_id"();
 
 DROP TRIGGER IF EXISTS "refresh_app_rollout_channel_count" ON "public"."channels";
 CREATE TRIGGER "refresh_app_rollout_channel_count"
-AFTER INSERT OR UPDATE OF "app_id", "rollout_enabled", "rollout_version" OR DELETE ON "public"."channels"
+AFTER INSERT OR UPDATE OF "app_id", "rollout_enabled", "rollout_version", "rollout_paused_at" OR DELETE ON "public"."channels"
 FOR EACH ROW
 EXECUTE FUNCTION "public"."refresh_app_rollout_channel_count"();
 
 UPDATE "public"."apps" AS a
-SET "rollout_channel_count" = rollout_counts.rollout_count
-FROM (
-  SELECT
-    c."app_id",
-    count(*)::bigint AS rollout_count
-  FROM "public"."channels" AS c
-  WHERE c."rollout_version" IS NOT NULL
-    AND c."rollout_enabled" = true
-  GROUP BY c."app_id"
-) AS rollout_counts
-WHERE rollout_counts."app_id" = a."app_id";
+SET
+  "rollout_channel_count" = (
+    SELECT count(*)::bigint
+    FROM "public"."channels" AS c
+    WHERE c."app_id" = a."app_id"
+      AND c."rollout_version" IS NOT NULL
+      AND c."rollout_enabled" = true
+      AND c."rollout_paused_at" IS NULL
+  ),
+  "rollout_paused_version_names" = ARRAY(
+    SELECT DISTINCT rv."name"
+    FROM "public"."channels" AS c
+    INNER JOIN "public"."app_versions" AS rv ON rv."id" = c."rollout_version" AND rv."app_id" = c."app_id"
+    WHERE c."app_id" = a."app_id"
+      AND c."rollout_version" IS NOT NULL
+      AND c."rollout_enabled" = true
+      AND c."rollout_paused_at" IS NOT NULL
+    ORDER BY rv."name"
+  );
 
 CREATE OR REPLACE FUNCTION public.update_app_versions_retention()
 RETURNS void

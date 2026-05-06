@@ -303,8 +303,8 @@ async function handleVersionLink(appVersion: Database['public']['Tables']['app_v
     return
   }
 
-  await saveChannelChange('version', appVersion.id)
-  toast.success(t('linked-bundle'))
+  if (await saveChannelChange('version', appVersion.id))
+    toast.success(t('linked-bundle'))
 }
 
 async function getUnknownVersion(): Promise<number> {

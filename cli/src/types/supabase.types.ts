@@ -267,6 +267,7 @@ export type Database = {
           last_version: string | null
           manifest_bundle_count: number
           rollout_channel_count: number
+          rollout_paused_version_names: string[]
           name: string | null
           need_onboarding: boolean
           owner_org: string
@@ -293,6 +294,7 @@ export type Database = {
           last_version?: string | null
           manifest_bundle_count?: number
           rollout_channel_count?: number
+          rollout_paused_version_names?: string[]
           name?: string | null
           need_onboarding?: boolean
           owner_org: string
@@ -319,6 +321,7 @@ export type Database = {
           last_version?: string | null
           manifest_bundle_count?: number
           rollout_channel_count?: number
+          rollout_paused_version_names?: string[]
           name?: string | null
           need_onboarding?: boolean
           owner_org?: string
@@ -3251,6 +3254,7 @@ export type Database = {
           last_version: string | null
           manifest_bundle_count: number
           rollout_channel_count: number
+          rollout_paused_version_names: string[]
           name: string | null
           need_onboarding: boolean
           owner_org: string

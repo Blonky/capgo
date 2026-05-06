@@ -297,12 +297,13 @@ describe('[POST] /updates', () => {
     try {
       const { data: app } = await supabase
         .from('apps')
-        .select('rollout_channel_count')
+        .select('rollout_channel_count,rollout_paused_version_names')
         .eq('app_id', APP_NAME_UPDATE)
         .single()
         .throwOnError()
 
       expect(app.rollout_channel_count).toBe(0)
+      expect(app.rollout_paused_version_names).not.toContain(rolloutVersionName)
 
       const baseData = getBaseData(APP_NAME_UPDATE)
       baseData.version_name = rolloutVersionName
@@ -313,6 +314,88 @@ describe('[POST] /updates', () => {
 
       const json = await response.json<UpdateRes>()
       expect(json.version).not.toBe(rolloutVersionName)
+    }
+    finally {
+      await supabase
+        .from('channels')
+        .update({
+          rollout_version: productionChannel.rollout_version,
+          rollout_enabled: productionChannel.rollout_enabled,
+          rollout_percentage_bps: productionChannel.rollout_percentage_bps,
+          rollout_paused_at: productionChannel.rollout_paused_at,
+          rollout_pause_reason: productionChannel.rollout_pause_reason,
+        })
+        .eq('id', productionChannel.id)
+        .eq('app_id', APP_NAME_UPDATE)
+        .throwOnError()
+    }
+  })
+
+  it('keeps paused rollout targets available only for devices already on that version', async () => {
+    const supabase = getSupabaseClient()
+    const rolloutVersionName = `1.3.${Math.floor(Math.random() * 100000) + 1000}`
+    const rolloutVersion = await createAppVersions(rolloutVersionName, APP_NAME_UPDATE, {
+      external_url: `https://example.com/paused-rollout-${rolloutVersionName}.zip`,
+    })
+
+    const { data: productionChannel } = await supabase
+      .from('channels')
+      .select('id,rollout_version,rollout_enabled,rollout_percentage_bps,rollout_paused_at,rollout_pause_reason')
+      .eq('app_id', APP_NAME_UPDATE)
+      .eq('name', 'production')
+      .single()
+      .throwOnError()
+
+    await supabase
+      .from('channels')
+      .update({
+        rollout_version: rolloutVersion.id,
+        rollout_enabled: true,
+        rollout_percentage_bps: 10000,
+      })
+      .eq('id', productionChannel.id)
+      .eq('app_id', APP_NAME_UPDATE)
+      .throwOnError()
+
+    await supabase
+      .from('channels')
+      .update({
+        rollout_paused_at: new Date().toISOString(),
+        rollout_pause_reason: 'test pause',
+      })
+      .eq('id', productionChannel.id)
+      .eq('app_id', APP_NAME_UPDATE)
+      .throwOnError()
+
+    try {
+      const { data: app } = await supabase
+        .from('apps')
+        .select('rollout_channel_count,rollout_paused_version_names')
+        .eq('app_id', APP_NAME_UPDATE)
+        .single()
+        .throwOnError()
+
+      expect(app.rollout_channel_count).toBe(0)
+      expect(app.rollout_paused_version_names).toContain(rolloutVersionName)
+
+      const existingRolloutDevice = getBaseData(APP_NAME_UPDATE)
+      existingRolloutDevice.version_name = rolloutVersionName
+      existingRolloutDevice.version_build = rolloutVersionName
+
+      const existingResponse = await postUpdateAfterChannelMutation(existingRolloutDevice)
+      expect(existingResponse.status).toBe(200)
+      const existingJson = await existingResponse.json<UpdateRes>()
+      expect(existingJson.error).toBe('no_new_version_available')
+      expect(existingJson.kind).toBe('up_to_date')
+
+      const stableDevice = getBaseData(APP_NAME_UPDATE)
+      stableDevice.version_name = '0.0.0'
+      stableDevice.version_build = '0.0.0'
+
+      const stableResponse = await postUpdateAfterChannelMutation(stableDevice)
+      expect(stableResponse.status).toBe(200)
+      const stableJson = await stableResponse.json<UpdateRes>()
+      expect(stableJson.version).not.toBe(rolloutVersionName)
     }
     finally {
       await supabase
