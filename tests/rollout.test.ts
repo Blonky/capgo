@@ -17,7 +17,7 @@ const baseDecision = {
 }
 
 describe('rollout decisions', () => {
-  it('returns stable at 0 percent', () => {
+  it.concurrent('returns stable at 0 percent', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
       rolloutPercentageBps: 0,
@@ -29,7 +29,7 @@ describe('rollout decisions', () => {
     expect(decision.shouldWriteCache).toBe(false)
   })
 
-  it('selects rollout at 100 percent', () => {
+  it.concurrent('selects rollout at 100 percent', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
       rolloutPercentageBps: 10000,
@@ -41,7 +41,7 @@ describe('rollout decisions', () => {
     expect(decision.payload?.selected).toBe(true)
   })
 
-  it('keeps cached unselected devices stable when percentage is unchanged', () => {
+  it.concurrent('keeps cached unselected devices stable when percentage is unchanged', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
       rolloutPercentageBps: 2500,
@@ -61,7 +61,7 @@ describe('rollout decisions', () => {
     expect(decision.shouldWriteCache).toBe(false)
   })
 
-  it('re-rolls only the delta probability after percentage increases', () => {
+  it.concurrent('re-rolls only the delta probability after percentage increases', () => {
     expect(getDeltaProbabilityBps(2000, 5000)).toBe(3750)
 
     const selected = resolveRolloutDecision({
@@ -96,7 +96,7 @@ describe('rollout decisions', () => {
     expect(notSelected.selected).toBe(false)
   })
 
-  it('keeps devices already on rollout on rollout when paused and cache is missing', () => {
+  it.concurrent('keeps devices already on rollout on rollout when paused and cache is missing', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
       currentVersionName: '1.1.0',
@@ -110,7 +110,7 @@ describe('rollout decisions', () => {
     expect(decision.payload?.selected).toBe(true)
   })
 
-  it('does not expose new devices while paused', () => {
+  it.concurrent('does not expose new devices while paused', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
       rolloutPausedAt: '2026-05-06T11:30:00.000Z',
@@ -124,7 +124,7 @@ describe('rollout decisions', () => {
 })
 
 describe('rollout auto-pause policy', () => {
-  it('respects disabled state', () => {
+  it.concurrent('respects disabled state', () => {
     const result = evaluateAutoPausePolicy({
       action: 'pause',
       confidence: 0.95,
@@ -139,7 +139,7 @@ describe('rollout auto-pause policy', () => {
     expect(result.reason).toBe('disabled')
   })
 
-  it('respects configurable minimums and cooldown', () => {
+  it.concurrent('respects configurable minimums and cooldown', () => {
     const lowAttempts = evaluateAutoPausePolicy({
       action: 'pause',
       confidence: 0.95,
@@ -167,7 +167,7 @@ describe('rollout auto-pause policy', () => {
     expect(coolingDown.reason).toBe('cooldown')
   })
 
-  it('uses confidence lower bound before triggering configured action', () => {
+  it.concurrent('uses confidence lower bound before triggering configured action', () => {
     const result = evaluateAutoPausePolicy({
       action: 'rollback',
       confidence: 0.8,

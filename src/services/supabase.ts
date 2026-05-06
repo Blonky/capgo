@@ -658,7 +658,7 @@ export async function getRemoteDependencies(appId: string, channel: string) {
   if (error) {
     throw new Error(error.message)
   }
-  return convertNativePackages((remoteNativePackages.version.native_packages as any) ?? [])
+  return convertNativePackages((remoteNativePackages?.version?.native_packages as any) ?? [])
 }
 
 export async function getVersionRemoteDependencies(appId: string, bundleId: string) {

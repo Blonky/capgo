@@ -22,23 +22,68 @@ interface ChannelSet {
   allow_device?: boolean
   allow_dev?: boolean
   allow_prod?: boolean
-  rolloutVersion?: string | null
+  rolloutVersion?: string | number | null
+  rollout_version?: string | number | null
   rolloutPercentage?: number
+  rollout_percentage?: number
   rolloutPercentageBps?: number
+  rollout_percentage_bps?: number
   rolloutEnabled?: boolean
+  rollout_enabled?: boolean
   rolloutPaused?: boolean
+  rollout_paused?: boolean
+  rolloutPausedAt?: string | null
+  rollout_paused_at?: string | null
   rolloutPauseReason?: string | null
+  rollout_pause_reason?: string | null
   rolloutCacheTtlSeconds?: number
+  rollout_cache_ttl_seconds?: number
   rollback?: boolean
   promoteToStable?: boolean
+  promote_to_stable?: boolean
   autoPauseEnabled?: boolean
+  auto_pause_enabled?: boolean
   autoPauseWindowMinutes?: number
+  auto_pause_window_minutes?: number
   autoPauseFailureRateBps?: number | null
+  auto_pause_failure_rate_bps?: number | null
   autoPauseConfidence?: number
+  auto_pause_confidence?: number
   autoPauseMinAttempts?: number | null
+  auto_pause_min_attempts?: number | null
   autoPauseMinFailures?: number | null
+  auto_pause_min_failures?: number | null
   autoPauseAction?: 'pause' | 'rollback' | 'notify'
+  auto_pause_action?: 'pause' | 'rollback' | 'notify'
   autoPauseCooldownMinutes?: number
+  auto_pause_cooldown_minutes?: number
+}
+
+function definedOrAlias<T>(value: T | undefined, alias: T | undefined): T | undefined {
+  return value === undefined ? alias : value
+}
+
+function normalizeChannelSet(body: ChannelSet): ChannelSet {
+  return {
+    ...body,
+    rolloutVersion: definedOrAlias(body.rolloutVersion, body.rollout_version),
+    rolloutPercentage: definedOrAlias(body.rolloutPercentage, body.rollout_percentage),
+    rolloutPercentageBps: definedOrAlias(body.rolloutPercentageBps, body.rollout_percentage_bps),
+    rolloutEnabled: definedOrAlias(body.rolloutEnabled, body.rollout_enabled),
+    rolloutPaused: definedOrAlias(body.rolloutPaused, body.rollout_paused),
+    rolloutPausedAt: definedOrAlias(body.rolloutPausedAt, body.rollout_paused_at),
+    rolloutPauseReason: definedOrAlias(body.rolloutPauseReason, body.rollout_pause_reason),
+    rolloutCacheTtlSeconds: definedOrAlias(body.rolloutCacheTtlSeconds, body.rollout_cache_ttl_seconds),
+    promoteToStable: definedOrAlias(body.promoteToStable, body.promote_to_stable),
+    autoPauseEnabled: definedOrAlias(body.autoPauseEnabled, body.auto_pause_enabled),
+    autoPauseWindowMinutes: definedOrAlias(body.autoPauseWindowMinutes, body.auto_pause_window_minutes),
+    autoPauseFailureRateBps: definedOrAlias(body.autoPauseFailureRateBps, body.auto_pause_failure_rate_bps),
+    autoPauseConfidence: definedOrAlias(body.autoPauseConfidence, body.auto_pause_confidence),
+    autoPauseMinAttempts: definedOrAlias(body.autoPauseMinAttempts, body.auto_pause_min_attempts),
+    autoPauseMinFailures: definedOrAlias(body.autoPauseMinFailures, body.auto_pause_min_failures),
+    autoPauseAction: definedOrAlias(body.autoPauseAction, body.auto_pause_action),
+    autoPauseCooldownMinutes: definedOrAlias(body.autoPauseCooldownMinutes, body.auto_pause_cooldown_minutes),
+  }
 }
 
 function validateIntegerRange(value: number | null | undefined, field: string, min: number, max: number) {
@@ -73,7 +118,29 @@ async function findVersion(c: Context, appID: string, version: string, ownerOrg:
   return data.id
 }
 
+async function findVersionId(c: Context, appID: string, versionId: number, ownerOrg: string, apikey: Database['public']['Tables']['apikeys']['Row']) {
+  const { data, error: vError } = await supabaseApikey(c, apikey.key)
+    .from('app_versions')
+    .select('id')
+    .eq('id', versionId)
+    .eq('app_id', appID)
+    .eq('owner_org', ownerOrg)
+    .single()
+  if (vError || !data) {
+    cloudlogErr({ requestId: c.get('requestId'), message: 'Cannot find version by id', data: { appID, versionId, ownerOrg, vError } })
+    return Promise.reject(new Error(vError?.message ?? 'Cannot find version'))
+  }
+  return data.id
+}
+
+function resolveVersion(c: Context, appID: string, version: string | number, ownerOrg: string, apikey: Database['public']['Tables']['apikeys']['Row']) {
+  return typeof version === 'number'
+    ? findVersionId(c, appID, version, ownerOrg, apikey)
+    : findVersion(c, appID, version, ownerOrg, apikey)
+}
+
 export async function post(c: Context<MiddlewareKeyVariables>, body: ChannelSet, apikey: Database['public']['Tables']['apikeys']['Row']): Promise<Response> {
+  body = normalizeChannelSet(body)
   if (!body.app_id) {
     throw simpleError('missing_app_id', 'Missing app_id', { body })
   }
@@ -117,6 +184,10 @@ export async function post(c: Context<MiddlewareKeyVariables>, body: ChannelSet,
     existingChannelVersion = existingChannel?.version ?? null
     existingRolloutVersion = existingChannel?.rollout_version ?? null
   }
+  const rolloutPausedAt = body.rolloutPausedAt !== undefined
+    ? body.rolloutPausedAt
+    : body.rolloutPaused == null ? undefined : body.rolloutPaused ? new Date().toISOString() : null
+
   const channel: Database['public']['Tables']['channels']['Insert'] = {
     created_by: apikey.user_id,
     app_id: body.app_id,
@@ -136,7 +207,7 @@ export async function post(c: Context<MiddlewareKeyVariables>, body: ChannelSet,
     ...(body.rolloutEnabled == null ? {} : { rollout_enabled: body.rolloutEnabled }),
     ...(body.rolloutCacheTtlSeconds == null ? {} : { rollout_cache_ttl_seconds: body.rolloutCacheTtlSeconds }),
     ...(body.rolloutPauseReason === undefined ? {} : { rollout_pause_reason: body.rolloutPauseReason }),
-    ...(body.rolloutPaused == null ? {} : { rollout_paused_at: body.rolloutPaused ? new Date().toISOString() : null, ...(body.rolloutPaused ? {} : { rollout_pause_reason: null }) }),
+    ...(rolloutPausedAt === undefined ? {} : { rollout_paused_at: rolloutPausedAt, ...(rolloutPausedAt ? {} : { rollout_pause_reason: null }) }),
     ...(body.autoPauseEnabled == null ? {} : { auto_pause_enabled: body.autoPauseEnabled }),
     ...(body.autoPauseWindowMinutes == null ? {} : { auto_pause_window_minutes: body.autoPauseWindowMinutes }),
     ...(body.autoPauseFailureRateBps === undefined ? {} : { auto_pause_failure_rate_bps: body.autoPauseFailureRateBps }),
@@ -154,7 +225,7 @@ export async function post(c: Context<MiddlewareKeyVariables>, body: ChannelSet,
     : await findVersion(c, body.app_id, body.version ?? 'unknown', org.owner_org, apikey)
 
   if (body.rolloutVersion !== undefined) {
-    channel.rollout_version = body.rolloutVersion ? await findVersion(c, body.app_id, body.rolloutVersion, org.owner_org, apikey) : null
+    channel.rollout_version = body.rolloutVersion ? await resolveVersion(c, body.app_id, body.rolloutVersion, org.owner_org, apikey) : null
   }
 
   if (body.rollback) {

@@ -192,7 +192,7 @@ async function getChannel(force = false) {
   }
 }
 
-async function saveChannelChange<K extends EditableChannelKey>(key: K, val: ChannelUpdate[K]) {
+async function saveChannelChanges(update: ChannelUpdate) {
   if (!canUpdateChannelSettings.value) {
     toast.error(t('no-permission'))
     return
@@ -201,33 +201,33 @@ async function saveChannelChange<K extends EditableChannelKey>(key: K, val: Chan
   if (!id.value || !channel.value)
     return
 
-  // Validate version ID if updating version field
-  if (key === 'version' && (val === undefined || val === null || typeof val !== 'number')) {
-    console.error('Invalid version ID:', val)
+  if (Object.prototype.hasOwnProperty.call(update, 'version') && (update.version === undefined || update.version === null || typeof update.version !== 'number')) {
+    console.error('Invalid version ID:', update.version)
     toast.error(t('error-invalid-version'))
     return
   }
 
   try {
-    const update = {
-      [key]: val,
-    } as ChannelUpdate
     const { error } = await supabase
       .from('channels')
       .update(update)
       .eq('id', id.value)
-    getChannel(true)
     if (error) {
       toast.error(t('error-update-channel'))
       console.error('no channel update', error)
     }
     else {
+      await getChannel(true)
       toast.info(t('cloud-replication-delay'))
     }
   }
   catch (error) {
     console.error(error)
   }
+}
+
+async function saveChannelChange<K extends EditableChannelKey>(key: K, val: ChannelUpdate[K]) {
+  await saveChannelChanges({ [key]: val } as ChannelUpdate)
 }
 
 watchEffect(async () => {
@@ -483,30 +483,32 @@ async function saveAutoPauseFailureRate(value: string) {
 }
 
 async function rollbackRollout() {
-  await Promise.all([
-    saveChannelChange('rollout_version', null as any),
-    saveChannelChange('rollout_enabled', false as any),
-    saveChannelChange('rollout_percentage_bps', 0 as any),
-    saveChannelChange('rollout_paused_at', null as any),
-    saveChannelChange('rollout_pause_reason', null as any),
-  ])
+  await saveChannelChanges({
+    rollout_version: null,
+    rollout_enabled: false,
+    rollout_percentage_bps: 0,
+    rollout_paused_at: null,
+    rollout_pause_reason: null,
+  })
 }
 
 async function promoteRollout() {
   if (!channel.value?.rollout_version)
     return
-  await saveChannelChange('version', channel.value.rollout_version as any)
-  await rollbackRollout()
+  await saveChannelChanges({
+    version: channel.value.rollout_version,
+    rollout_version: null,
+    rollout_enabled: false,
+    rollout_percentage_bps: 0,
+    rollout_paused_at: null,
+    rollout_pause_reason: null,
+  })
 }
 
 async function toggleRolloutPause() {
-  if (channel.value?.rollout_paused_at) {
-    await saveChannelChange('rollout_paused_at', null as any)
-    await saveChannelChange('rollout_pause_reason', null as any)
-    return
-  }
-  await saveChannelChange('rollout_paused_at', new Date().toISOString() as any)
-  await saveChannelChange('rollout_pause_reason', t('manual-rollout-pause') as any)
+  await saveChannelChanges(channel.value?.rollout_paused_at
+    ? { rollout_paused_at: null, rollout_pause_reason: null }
+    : { rollout_paused_at: new Date().toISOString(), rollout_pause_reason: t('manual-rollout-pause') })
 }
 
 async function refreshFilteredVersions() {
