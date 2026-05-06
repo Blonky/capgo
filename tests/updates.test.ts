@@ -266,6 +266,71 @@ describe('[POST] /updates', () => {
     expect(json.checksum).toBe(expectedFallbackJson.checksum)
   })
 
+  it('keeps rollout-aware path for disabled rollout targets', async () => {
+    const supabase = getSupabaseClient()
+    const rolloutVersionName = `1.2.${Math.floor(Math.random() * 100000) + 1000}`
+    const rolloutVersion = await createAppVersions(rolloutVersionName, APP_NAME_UPDATE, {
+      external_url: `https://example.com/disabled-rollout-${rolloutVersionName}.zip`,
+    })
+
+    const { data: productionChannel } = await supabase
+      .from('channels')
+      .select('id,rollout_version,rollout_enabled,rollout_percentage_bps,rollout_paused_at,rollout_pause_reason')
+      .eq('app_id', APP_NAME_UPDATE)
+      .eq('name', 'production')
+      .single()
+      .throwOnError()
+
+    await supabase
+      .from('channels')
+      .update({
+        rollout_version: rolloutVersion.id,
+        rollout_enabled: false,
+        rollout_percentage_bps: 0,
+        rollout_paused_at: null,
+        rollout_pause_reason: null,
+      })
+      .eq('id', productionChannel.id)
+      .eq('app_id', APP_NAME_UPDATE)
+      .throwOnError()
+
+    try {
+      const { data: app } = await supabase
+        .from('apps')
+        .select('rollout_channel_count')
+        .eq('app_id', APP_NAME_UPDATE)
+        .single()
+        .throwOnError()
+
+      expect(app.rollout_channel_count).toBeGreaterThan(0)
+
+      const baseData = getBaseData(APP_NAME_UPDATE)
+      baseData.version_name = rolloutVersionName
+      baseData.version_build = rolloutVersionName
+
+      const response = await postUpdateAfterChannelMutation(baseData)
+      expect(response.status).toBe(200)
+
+      const json = await response.json<UpdateRes>()
+      expect(json.error).toBe('no_new_version_available')
+      expect(json.kind).toBe('up_to_date')
+    }
+    finally {
+      await supabase
+        .from('channels')
+        .update({
+          rollout_version: productionChannel.rollout_version,
+          rollout_enabled: productionChannel.rollout_enabled,
+          rollout_percentage_bps: productionChannel.rollout_percentage_bps,
+          rollout_paused_at: productionChannel.rollout_paused_at,
+          rollout_pause_reason: productionChannel.rollout_pause_reason,
+        })
+        .eq('id', productionChannel.id)
+        .eq('app_id', APP_NAME_UPDATE)
+        .throwOnError()
+    }
+  })
+
   it('keeps builtin channel targets addressable', async () => {
     const supabase = getSupabaseClient()
     const { data: productionChannel } = await supabase

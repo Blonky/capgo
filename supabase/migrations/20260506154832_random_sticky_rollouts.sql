@@ -66,9 +66,9 @@ CREATE INDEX "idx_channels_rollout_version"
 ON "public"."channels" ("rollout_version")
 WHERE "rollout_version" IS NOT NULL;
 
-CREATE INDEX "idx_channels_active_rollouts"
-ON "public"."channels" ("app_id", "rollout_enabled", "rollout_version")
-WHERE "rollout_enabled" = true AND "rollout_version" IS NOT NULL;
+CREATE INDEX "idx_channels_rollout_targets"
+ON "public"."channels" ("app_id", "rollout_version")
+WHERE "rollout_version" IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION "public"."refresh_app_rollout_channel_count_for_app"("p_app_id" character varying)
 RETURNS void
@@ -87,7 +87,6 @@ BEGIN
       SELECT count(*)::bigint
       FROM public.channels AS c
       WHERE c.app_id = p_app_id
-        AND c.rollout_enabled IS TRUE
         AND c.rollout_version IS NOT NULL
     ),
     updated_at = now()
@@ -168,8 +167,7 @@ FROM (
     c."app_id",
     count(*)::bigint AS rollout_count
   FROM "public"."channels" AS c
-  WHERE c."rollout_enabled" = true
-    AND c."rollout_version" IS NOT NULL
+  WHERE c."rollout_version" IS NOT NULL
   GROUP BY c."app_id"
 ) AS rollout_counts
 WHERE rollout_counts."app_id" = a."app_id";
