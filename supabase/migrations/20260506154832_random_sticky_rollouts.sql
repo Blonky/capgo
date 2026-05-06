@@ -91,6 +91,7 @@ BEGIN
       FROM public.channels AS c
       WHERE c.app_id = p_app_id
         AND c.rollout_version IS NOT NULL
+        AND c.rollout_enabled = true
     ),
     updated_at = now()
   WHERE a.app_id = p_app_id;
@@ -181,6 +182,7 @@ FROM (
     count(*)::bigint AS rollout_count
   FROM "public"."channels" AS c
   WHERE c."rollout_version" IS NOT NULL
+    AND c."rollout_enabled" = true
   GROUP BY c."app_id"
 ) AS rollout_counts
 WHERE rollout_counts."app_id" = a."app_id";
@@ -244,9 +246,10 @@ END;
 $$;
 
 ALTER FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) OWNER TO postgres;
-GRANT ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO anon;
-GRANT ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO authenticated;
-GRANT ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO service_role;
+REVOKE ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO anon;
+GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.delete_old_deleted_versions()
 RETURNS void

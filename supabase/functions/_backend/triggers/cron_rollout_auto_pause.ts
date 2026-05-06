@@ -1,11 +1,10 @@
-import type { MiddlewareKeyVariables } from '../utils/hono.ts'
 import type { AutoPauseAction } from '../utils/rollout.ts'
-import { Hono } from 'hono/tiny'
-import { BRES, middlewareAPISecret } from '../utils/hono.ts'
+import { BRES, createHono, middlewareAPISecret } from '../utils/hono.ts'
 import { cloudlog, cloudlogErr } from '../utils/logging.ts'
 import { evaluateAutoPausePolicy } from '../utils/rollout.ts'
 import { readStatsVersion } from '../utils/stats.ts'
 import { supabaseAdmin } from '../utils/supabase.ts'
+import { version } from '../utils/version.ts'
 
 interface RolloutAutoPauseChannel {
   app_id: string
@@ -26,7 +25,7 @@ interface RolloutAutoPauseChannel {
   rollout_version_info?: { name: string } | { name: string }[] | null
 }
 
-export const app = new Hono<MiddlewareKeyVariables>()
+export const app = createHono('', version)
 
 function normalizeAction(action: string): AutoPauseAction {
   if (action === 'rollback' || action === 'notify')

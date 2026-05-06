@@ -266,7 +266,7 @@ describe('[POST] /updates', () => {
     expect(json.checksum).toBe(expectedFallbackJson.checksum)
   })
 
-  it('keeps rollout-aware path for disabled rollout targets', async () => {
+  it('keeps disabled rollout targets on the fast path', async () => {
     const supabase = getSupabaseClient()
     const rolloutVersionName = `1.2.${Math.floor(Math.random() * 100000) + 1000}`
     const rolloutVersion = await createAppVersions(rolloutVersionName, APP_NAME_UPDATE, {
@@ -302,7 +302,7 @@ describe('[POST] /updates', () => {
         .single()
         .throwOnError()
 
-      expect(app.rollout_channel_count).toBeGreaterThan(0)
+      expect(app.rollout_channel_count).toBe(0)
 
       const baseData = getBaseData(APP_NAME_UPDATE)
       baseData.version_name = rolloutVersionName
@@ -312,8 +312,7 @@ describe('[POST] /updates', () => {
       expect(response.status).toBe(200)
 
       const json = await response.json<UpdateRes>()
-      expect(json.error).toBe('no_new_version_available')
-      expect(json.kind).toBe('up_to_date')
+      expect(json.version).not.toBe(rolloutVersionName)
     }
     finally {
       await supabase

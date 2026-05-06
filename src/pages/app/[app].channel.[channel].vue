@@ -195,16 +195,16 @@ async function getChannel(force = false) {
 async function saveChannelChanges(update: ChannelUpdate) {
   if (!canUpdateChannelSettings.value) {
     toast.error(t('no-permission'))
-    return
+    return false
   }
 
   if (!id.value || !channel.value)
-    return
+    return false
 
   if (Object.prototype.hasOwnProperty.call(update, 'version') && (update.version === undefined || update.version === null || typeof update.version !== 'number')) {
     console.error('Invalid version ID:', update.version)
     toast.error(t('error-invalid-version'))
-    return
+    return false
   }
 
   try {
@@ -215,19 +215,21 @@ async function saveChannelChanges(update: ChannelUpdate) {
     if (error) {
       toast.error(t('error-update-channel'))
       console.error('no channel update', error)
+      return false
     }
-    else {
-      await getChannel(true)
-      toast.info(t('cloud-replication-delay'))
-    }
+
+    await getChannel(true)
+    toast.info(t('cloud-replication-delay'))
+    return true
   }
   catch (error) {
     console.error(error)
+    return false
   }
 }
 
 async function saveChannelChange<K extends EditableChannelKey>(key: K, val: ChannelUpdate[K]) {
-  await saveChannelChanges({ [key]: val } as ChannelUpdate)
+  return await saveChannelChanges({ [key]: val } as ChannelUpdate)
 }
 
 watchEffect(async () => {
@@ -292,9 +294,12 @@ async function handleVersionLink(appVersion: Database['public']['Tables']['app_v
     toast.info(t('bundle-compatible-with-channel', { channel: channel.value.name }))
   }
   if (bundleLinkMode.value === 'rollout') {
-    await saveChannelChange('rollout_version', appVersion.id as any)
-    await saveChannelChange('rollout_enabled', true as any)
-    toast.success(t('rollout-target-linked'))
+    const saved = await saveChannelChanges({
+      rollout_version: appVersion.id,
+      rollout_enabled: true,
+    })
+    if (saved)
+      toast.success(t('rollout-target-linked'))
     return
   }
 
@@ -845,19 +850,19 @@ async function copyCurlCommand() {
                   {{ channel.rollout_paused_at ? t('paused') : channel.rollout_enabled ? t('enabled') : t('disabled') }}
                 </span>
                 <div class="flex flex-wrap justify-end gap-2">
-                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canPromoteBundle" @click="openSelectRolloutVersion()">
+                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canUpdateChannelSettings" @click="openSelectRolloutVersion()">
                     {{ t('set-rollout-target') }}
                   </button>
-                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canPromoteBundle || !channel.rollout_version" @click="saveChannelChange('rollout_enabled', !channel.rollout_enabled as any)">
+                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canUpdateChannelSettings || !channel.rollout_version" @click="saveChannelChange('rollout_enabled', !channel.rollout_enabled as any)">
                     {{ channel.rollout_enabled ? t('disable') : t('enable') }}
                   </button>
-                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canPromoteBundle || !channel.rollout_version" @click="toggleRolloutPause()">
+                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canUpdateChannelSettings || !channel.rollout_version" @click="toggleRolloutPause()">
                     {{ channel.rollout_paused_at ? t('resume') : t('pause') }}
                   </button>
-                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canPromoteBundle || !channel.rollout_version" @click="promoteRollout()">
+                  <button class="d-btn d-btn-sm d-btn-outline" :disabled="!canUpdateChannelSettings || !channel.rollout_version" @click="promoteRollout()">
                     {{ t('promote') }}
                   </button>
-                  <button class="d-btn d-btn-sm d-btn-error d-btn-outline" :disabled="!canPromoteBundle || !channel.rollout_version" @click="rollbackRollout()">
+                  <button class="d-btn d-btn-sm d-btn-error d-btn-outline" :disabled="!canUpdateChannelSettings || !channel.rollout_version" @click="rollbackRollout()">
                     {{ t('rollback') }}
                   </button>
                 </div>
@@ -871,7 +876,7 @@ async function copyCurlCommand() {
                   min="0"
                   max="100"
                   step="0.01"
-                  :disabled="!canPromoteBundle"
+                  :disabled="!canUpdateChannelSettings"
                   :value="(channel.rollout_percentage_bps ?? 0) / 100"
                   @change="saveRolloutPercentage(($event.target as HTMLInputElement).value)"
                 >
@@ -885,7 +890,7 @@ async function copyCurlCommand() {
                     class="d-toggle d-toggle-sm"
                     type="checkbox"
                     :checked="channel.auto_pause_enabled"
-                    :disabled="!canPromoteBundle"
+                    :disabled="!canUpdateChannelSettings"
                     @change="saveChannelChange('auto_pause_enabled', !channel.auto_pause_enabled as any)"
                   >
                   <span>{{ channel.auto_pause_enabled ? t('enabled') : t('disabled') }}</span>
@@ -896,14 +901,14 @@ async function copyCurlCommand() {
                     type="number"
                     min="0"
                     max="10000"
-                    :disabled="!canPromoteBundle"
+                    :disabled="!canUpdateChannelSettings"
                     :placeholder="t('failure-rate-bps')"
                     :value="channel.auto_pause_failure_rate_bps ?? ''"
                     @change="saveAutoPauseFailureRate(($event.target as HTMLInputElement).value)"
                   >
                   <select
                     class="d-select d-select-sm d-select-bordered"
-                    :disabled="!canPromoteBundle"
+                    :disabled="!canUpdateChannelSettings"
                     :value="channel.auto_pause_action"
                     @change="saveChannelChange('auto_pause_action', ($event.target as HTMLSelectElement).value as any)"
                   >
