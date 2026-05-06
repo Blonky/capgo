@@ -125,26 +125,6 @@ export function resolveRolloutDecision(input: RolloutDecisionInput): RolloutDeci
   const ttlSeconds = sanitizeRolloutCacheTtlSeconds(input.rolloutCacheTtlSeconds)
   const cached = isMatchingCachedDecision(input, input.cachePayload) ? input.cachePayload : null
 
-  if (input.currentVersionName === input.rolloutVersionName) {
-    return {
-      selected: true,
-      shouldWriteCache: true,
-      payload: cached?.selected ? updatePayload(input, cached, true, Math.max(cached.percentage_bps, percentageBps)) : buildPayload(input, true, percentageBps),
-      reason: 'already_on_rollout',
-      ttlSeconds,
-    }
-  }
-
-  if (cached?.selected) {
-    return {
-      selected: true,
-      shouldWriteCache: false,
-      payload: cached,
-      reason: 'cached_selected',
-      ttlSeconds,
-    }
-  }
-
   if (!input.rolloutEnabled) {
     return {
       selected: false,
@@ -155,12 +135,32 @@ export function resolveRolloutDecision(input: RolloutDecisionInput): RolloutDeci
     }
   }
 
+  if (input.currentVersionName === input.rolloutVersionName) {
+    return {
+      selected: true,
+      shouldWriteCache: true,
+      payload: cached?.selected ? updatePayload(input, cached, true, Math.max(cached.percentage_bps, percentageBps)) : buildPayload(input, true, percentageBps),
+      reason: 'already_on_rollout',
+      ttlSeconds,
+    }
+  }
+
   if (input.rolloutPausedAt) {
     return {
       selected: false,
       shouldWriteCache: false,
       payload: cached,
       reason: 'paused',
+      ttlSeconds,
+    }
+  }
+
+  if (cached?.selected) {
+    return {
+      selected: true,
+      shouldWriteCache: false,
+      payload: cached,
+      reason: 'cached_selected',
       ttlSeconds,
     }
   }

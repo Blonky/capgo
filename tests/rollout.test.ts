@@ -100,7 +100,7 @@ describe('rollout decisions', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
       currentVersionName: '1.1.0',
-      rolloutEnabled: false,
+      rolloutEnabled: true,
       rolloutPausedAt: '2026-05-06T11:30:00.000Z',
       rolloutPercentageBps: 0,
     })
@@ -110,9 +110,41 @@ describe('rollout decisions', () => {
     expect(decision.payload?.selected).toBe(true)
   })
 
+  it.concurrent('moves devices already on rollout back to stable when disabled', () => {
+    const decision = resolveRolloutDecision({
+      ...baseDecision,
+      currentVersionName: '1.1.0',
+      rolloutEnabled: false,
+      rolloutPercentageBps: 10000,
+    })
+
+    expect(decision.selected).toBe(false)
+    expect(decision.reason).toBe('disabled')
+  })
+
   it.concurrent('does not expose new devices while paused', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
+      rolloutPausedAt: '2026-05-06T11:30:00.000Z',
+      rolloutPercentageBps: 10000,
+      randomBps: () => 0,
+    })
+
+    expect(decision.selected).toBe(false)
+    expect(decision.reason).toBe('paused')
+  })
+
+  it.concurrent('does not expose cached selected devices while paused unless already installed', () => {
+    const decision = resolveRolloutDecision({
+      ...baseDecision,
+      cachePayload: {
+        selected: true,
+        percentage_bps: 10000,
+        rollout_id: baseDecision.rolloutId,
+        rollout_version: baseDecision.rolloutVersionId,
+        created_at: '2026-05-06T11:00:00.000Z',
+        updated_at: '2026-05-06T11:00:00.000Z',
+      },
       rolloutPausedAt: '2026-05-06T11:30:00.000Z',
       rolloutPercentageBps: 10000,
       randomBps: () => 0,
