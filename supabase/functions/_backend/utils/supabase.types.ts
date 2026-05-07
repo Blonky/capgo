@@ -1204,21 +1204,27 @@ export type Database = {
           device_id: string
           id: number
           org_id: string
+          platform: string | null
           timestamp: string
+          version_build: string | null
         }
         Insert: {
           app_id: string
           device_id: string
           id?: number
           org_id: string
+          platform?: string | null
           timestamp?: string
+          version_build?: string | null
         }
         Update: {
           app_id?: string
           device_id?: string
           id?: number
           org_id?: string
+          platform?: string | null
           timestamp?: string
+          version_build?: string | null
         }
         Relationships: []
       }
@@ -2953,6 +2959,7 @@ export type Database = {
     }
     Functions: {
       accept_invitation_to_org: { Args: { org_id: string }; Returns: string }
+      app_versions_readable_app_ids: { Args: never; Returns: string[] }
       apply_usage_overage: {
         Args: {
           p_billing_cycle_end: string
@@ -3274,42 +3281,6 @@ export type Database = {
         Returns: {
           name: string
         }[]
-      }
-      get_accessible_apps_for_apikey_v2: {
-        Args: { apikey: string }
-        Returns: {
-          allow_device_custom_id: boolean
-          allow_preview: boolean
-          android_store_url: string | null
-          app_id: string
-          channel_device_count: number
-          created_at: string | null
-          default_upload_channel: string
-          existing_app: boolean
-          expose_metadata: boolean
-          icon_url: string
-          id: string | null
-          ios_store_url: string | null
-          last_version: string | null
-          manifest_bundle_count: number
-          rollout_channel_count: number
-          rollout_paused_version_names: string[]
-          name: string | null
-          need_onboarding: boolean
-          owner_org: string
-          retention: number
-          stats_refresh_requested_at: string | null
-          stats_updated_at: string | null
-          transfer_history: Json[] | null
-          updated_at: string | null
-          user_id: string | null
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "apps"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
       get_account_removal_date: { Args: never; Returns: string }
       get_apikey: { Args: never; Returns: string }
@@ -4279,6 +4250,15 @@ export type Database = {
           app_id: string
           date: string
           mau: number
+        }[]
+      }
+      read_native_version_usage: {
+        Args: { p_app_id: string; p_period_end: string; p_period_start: string }
+        Returns: {
+          date: string
+          devices: number
+          platform: string
+          version_build: string
         }[]
       }
       read_storage_usage: {
