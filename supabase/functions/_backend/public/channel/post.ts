@@ -125,6 +125,7 @@ async function findVersionId(c: Context, appID: string, versionId: number, owner
     .eq('id', versionId)
     .eq('app_id', appID)
     .eq('owner_org', ownerOrg)
+    .eq('deleted', false)
     .single()
   if (vError || !data) {
     cloudlogErr({ requestId: c.get('requestId'), message: 'Cannot find version by id', data: { appID, versionId, ownerOrg, vError } })

@@ -31,7 +31,7 @@ vi.mock('../supabase/functions/_backend/utils/utils.ts', () => ({
   isValidAppId,
 }))
 
-function buildSupabaseChain(body: { ownerOrg?: string, versionId?: number }) {
+function buildSupabaseChain(body: { ownerOrg?: string, versionId?: number, eqCalls?: Array<[string, unknown]> }) {
   return {
     from(table: string) {
       if (table === 'apps') {
@@ -47,7 +47,8 @@ function buildSupabaseChain(body: { ownerOrg?: string, versionId?: number }) {
       if (table === 'app_versions') {
         return {
           select: () => ({
-            eq() {
+            eq(column: string, value: unknown) {
+              body.eqCalls?.push([column, value])
               return this
             },
             single: async () => ({ data: { id: body.versionId ?? 123 }, error: null }),
@@ -147,5 +148,26 @@ describe('public channel post', () => {
         electron: false,
       }),
     )
+  })
+
+  it('filters numeric rollout target ids to active bundles', async () => {
+    const eqCalls: Array<[string, unknown]> = []
+    supabaseApikey.mockImplementation(() => buildSupabaseChain({ versionId: 456, eqCalls }))
+    const { post } = await import('../supabase/functions/_backend/public/channel/post.ts')
+
+    await post(
+      { json: vi.fn() } as any,
+      {
+        app_id: 'com.test.rollout-id',
+        channel: 'production',
+        version: '1.0.0',
+        rolloutVersion: 456,
+      },
+      { user_id: 'user-test', key: 'capg-key' } as any,
+    )
+
+    const rolloutIdCallIndex = eqCalls.findIndex(([column, value]) => column === 'id' && value === 456)
+    expect(rolloutIdCallIndex).toBeGreaterThanOrEqual(0)
+    expect(eqCalls.slice(rolloutIdCallIndex)).toContainEqual(['deleted', false])
   })
 })
