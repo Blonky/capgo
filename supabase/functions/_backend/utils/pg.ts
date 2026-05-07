@@ -603,6 +603,7 @@ export async function getEffectiveDeviceChannelNamePostgres(
             eq(platformQuery, true),
           ),
     )
+    .orderBy(channelAlias.name, channelAlias.id)
     .limit(1)
 
   cloudlog({ requestId: c.get('requestId'), message: 'stats channel Query:', channelQuery: channelQuery.toSQL() })
