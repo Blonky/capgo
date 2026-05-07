@@ -20,15 +20,6 @@ function rejectConflictingBooleanGroup<T extends Record<string, unknown>>(value:
 // SDK Result Schema
 // ============================================================================
 
-export const sdkResultSchema = z.object({
-  success: z.boolean(),
-  data: z.any().optional(),
-  error: z.string().optional(),
-  securityPolicyMessage: z.string().optional(),
-  isSecurityPolicyError: z.boolean().optional(),
-  warnings: z.array(z.string()).optional(),
-})
-
 // Note: SDKResult<T> is generic and kept as interface for generic parameter support
 export interface SDKResult<T = void> {
   success: boolean
