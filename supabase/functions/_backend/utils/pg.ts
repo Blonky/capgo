@@ -562,22 +562,55 @@ export async function getEffectiveDeviceChannelNamePostgres(
   app_id: string,
   device_id: string,
   fallbackChannelName: string | null | undefined,
+  platform: string,
+  hasChannelDeviceOverrides: boolean,
   drizzleClient: ReturnType<typeof getDrizzleClient>,
 ) {
   const fallback = typeof fallbackChannelName === 'string' && fallbackChannelName.trim() !== ''
-    ? fallbackChannelName
+    ? fallbackChannelName.trim()
     : null
   const { channelDevicesAlias, channelAlias } = getAlias()
+
+  if (hasChannelDeviceOverrides) {
+    const channelQuery = drizzleClient
+      .select({ name: channelAlias.name })
+      .from(channelDevicesAlias)
+      .innerJoin(channelAlias, and(eq(channelDevicesAlias.channel_id, channelAlias.id), eq(channelAlias.app_id, app_id)))
+      .where(and(eq(channelDevicesAlias.device_id, device_id), eq(channelDevicesAlias.app_id, app_id)))
+      .limit(1)
+
+    cloudlog({ requestId: c.get('requestId'), message: 'stats channel override Query:', channelQuery: channelQuery.toSQL() })
+    const channel = await channelQuery.then(data => data.at(0))
+    if (channel?.name)
+      return channel.name
+  }
+
+  const platformQuery = platform === 'android' ? channelAlias.android : platform === 'electron' ? channelAlias.electron : channelAlias.ios
   const channelQuery = drizzleClient
     .select({ name: channelAlias.name })
-    .from(channelDevicesAlias)
-    .innerJoin(channelAlias, and(eq(channelDevicesAlias.channel_id, channelAlias.id), eq(channelAlias.app_id, app_id)))
-    .where(and(eq(channelDevicesAlias.device_id, device_id), eq(channelDevicesAlias.app_id, app_id)))
+    .from(channelAlias)
+    .where(
+      fallback
+        ? and(
+            eq(channelAlias.app_id, app_id),
+            eq(channelAlias.name, fallback),
+            eq(platformQuery, true),
+            or(
+              eq(channelAlias.public, true),
+              eq(channelAlias.allow_device_self_set, true),
+            ),
+          )
+        : and(
+            eq(channelAlias.public, true),
+            eq(channelAlias.app_id, app_id),
+            eq(platformQuery, true),
+          ),
+    )
     .limit(1)
 
-  cloudlog({ requestId: c.get('requestId'), message: 'stats channel override Query:', channelQuery: channelQuery.toSQL() })
+  cloudlog({ requestId: c.get('requestId'), message: 'stats channel Query:', channelQuery: channelQuery.toSQL() })
   const channel = await channelQuery.then(data => data.at(0))
-  return channel?.name ?? fallback
+  return channel?.name ?? null
 }
 
 export function requestInfosChannelPostgres(

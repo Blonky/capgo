@@ -32,16 +32,9 @@ interface PostResult {
   moreInfo?: Record<string, unknown>
 }
 
-type StatsBodyWithChannel = AppStats & { channel?: string }
-
 function normalizeStatsChannelName(channelName: string | null | undefined): string | null {
   const trimmed = channelName?.trim()
   return trimmed || null
-}
-
-function getRequestedStatsChannelName(body: AppStats, defaultChannel: string | null | undefined): string | null {
-  const bodyChannel = (body as StatsBodyWithChannel).channel
-  return normalizeStatsChannelName(bodyChannel) ?? normalizeStatsChannelName(defaultChannel)
 }
 
 async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClient>, body: AppStats): Promise<PostResult> {
@@ -100,9 +93,7 @@ async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClien
 
   let effectiveStatsChannelNamePromise: Promise<string | null> | undefined
   const getEffectiveStatsChannelName = () => {
-    effectiveStatsChannelNamePromise ??= appOwner.channel_device_count > 0
-      ? getEffectiveDeviceChannelNamePostgres(c, app_id, device.device_id, getRequestedStatsChannelName(body, device.default_channel), drizzleClient as ReturnType<typeof getDrizzleClient>)
-      : Promise.resolve(getRequestedStatsChannelName(body, device.default_channel))
+    effectiveStatsChannelNamePromise ??= getEffectiveDeviceChannelNamePostgres(c, app_id, device.device_id, normalizeStatsChannelName(device.default_channel), device.platform, appOwner.channel_device_count > 0, drizzleClient as ReturnType<typeof getDrizzleClient>)
     return effectiveStatsChannelNamePromise
   }
 

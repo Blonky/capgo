@@ -220,6 +220,58 @@ describe('[POST] /stats', () => {
     }
   })
 
+  it('does not trust client-supplied channel for version usage stats', async () => {
+    const shortId = randomUUID().split('-')[0]
+    const appId = `${APP_NAME}.stats.spoof.${shortId}`
+    const deviceId = randomUUID().toLowerCase()
+    const spoofedChannelName = `private-${shortId}`
+    await resetAndSeedAppData(appId)
+    await resetAndSeedAppDataStats(appId)
+    const supabase = getSupabaseClient()
+
+    try {
+      const baseData = getBaseData(appId) as StatsPayload
+      baseData.device_id = deviceId
+      baseData.action = 'set'
+      delete baseData.defaultChannel
+      baseData.channel = spoofedChannelName
+      baseData.version_build = getVersionFromAction('set')
+      const version = await createAppVersions(baseData.version_build, appId)
+      baseData.version_name = version.name
+
+      const { error: channelError } = await supabase
+        .from('channels')
+        .insert({
+          app_id: appId,
+          name: spoofedChannelName,
+          version: version.id,
+          created_by: USER_ID,
+          owner_org: ORG_ID,
+        })
+      expect(channelError).toBeNull()
+
+      const response = await postStats(baseData)
+      expect(response.status).toBe(200)
+      expect(await response.json<StatsRes>()).toEqual({ status: 'ok' })
+
+      const { data: usage, error: usageError } = await supabase
+        .from('version_usage')
+        .select('channel_name')
+        .eq('app_id', appId)
+        .eq('version_name', version.name)
+        .eq('action', 'install')
+        .single()
+
+      expect(usageError).toBeNull()
+      expect(usage?.channel_name).toBe('production')
+      expect(usage?.channel_name).not.toBe(spoofedChannelName)
+    }
+    finally {
+      await resetAppData(appId)
+      await resetAppDataStats(appId)
+    }
+  })
+
   it('should ignore custom_id when app disables allow_device_custom_id and emit customIdBlocked stat', async () => {
     const shortId = randomUUID().split('-')[0]
     const appId = `${APP_NAME}.cidb.${shortId}`
