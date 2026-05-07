@@ -471,20 +471,34 @@ async function saveRolloutPercentage(value: string) {
   await saveChannelChange('rollout_percentage_bps', Math.round(percentage * 100) as any)
 }
 
-async function saveAutoPauseFailureRate(value: string) {
+async function saveIntegerField(key: EditableChannelKey, value: string, min: number, max: number, nullable = false) {
   const trimmedValue = value.trim()
-  if (!trimmedValue) {
-    await saveChannelChange('auto_pause_failure_rate_bps', null as any)
+  if (!trimmedValue && nullable) {
+    await saveChannelChange(key, null as any)
     return
   }
 
-  const failureRateBps = Number(trimmedValue)
-  if (!Number.isFinite(failureRateBps) || failureRateBps < 0 || failureRateBps > 10000) {
+  const parsedValue = Number(trimmedValue)
+  if (!Number.isInteger(parsedValue) || parsedValue < min || parsedValue > max) {
     toast.error(t('error-update-channel'))
     return
   }
 
-  await saveChannelChange('auto_pause_failure_rate_bps', Math.round(failureRateBps) as any)
+  await saveChannelChange(key, parsedValue as any)
+}
+
+async function saveAutoPauseFailureRate(value: string) {
+  await saveIntegerField('auto_pause_failure_rate_bps', value, 0, 10000, true)
+}
+
+async function saveAutoPauseConfidence(value: string) {
+  const confidence = Number(value.trim())
+  if (!Number.isFinite(confidence) || confidence <= 0 || confidence >= 1) {
+    toast.error(t('error-update-channel'))
+    return
+  }
+
+  await saveChannelChange('auto_pause_confidence', Number(confidence.toFixed(4)) as any)
 }
 
 async function rollbackRollout() {
@@ -868,46 +882,74 @@ async function copyCurlCommand() {
                 </div>
               </div>
             </InfoRow>
-            <InfoRow :label="t('rollout-percentage')">
-              <div class="flex items-center justify-end w-full gap-3">
-                <input
-                  class="w-24 d-input d-input-sm d-input-bordered"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  :disabled="!canUpdateChannelSettings"
-                  :value="(channel.rollout_percentage_bps ?? 0) / 100"
-                  @change="saveRolloutPercentage(($event.target as HTMLInputElement).value)"
-                >
-                <span class="text-sm text-slate-500 dark:text-slate-300">%</span>
+            <InfoRow :label="t('rollout-policy')">
+              <div class="grid w-full gap-3 text-left sm:grid-cols-2">
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('rollout-percentage') }}</span>
+                  <div class="flex items-center gap-2">
+                    <input
+                      class="w-24 d-input d-input-sm d-input-bordered"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      :aria-label="t('rollout-percentage')"
+                      :disabled="!canUpdateChannelSettings"
+                      :value="(channel.rollout_percentage_bps ?? 0) / 100"
+                      @change="saveRolloutPercentage(($event.target as HTMLInputElement).value)"
+                    >
+                    <span class="text-sm text-slate-500 dark:text-slate-300">%</span>
+                  </div>
+                </label>
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('cache-ttl-seconds') }}</span>
+                  <input
+                    class="w-32 d-input d-input-sm d-input-bordered"
+                    type="number"
+                    min="60"
+                    max="31536000"
+                    step="60"
+                    :aria-label="t('cache-ttl-seconds')"
+                    :disabled="!canUpdateChannelSettings"
+                    :value="channel.rollout_cache_ttl_seconds"
+                    @change="saveIntegerField('rollout_cache_ttl_seconds', ($event.target as HTMLInputElement).value, 60, 31536000)"
+                  >
+                </label>
               </div>
             </InfoRow>
             <InfoRow :label="t('auto-pause')">
-              <div class="flex flex-col items-end w-full gap-2 text-right">
-                <label class="inline-flex items-center gap-2 text-sm">
-                  <input
-                    class="d-toggle d-toggle-sm"
-                    type="checkbox"
-                    :checked="channel.auto_pause_enabled"
-                    :disabled="!canUpdateChannelSettings"
-                    @change="saveChannelChange('auto_pause_enabled', !channel.auto_pause_enabled as any)"
-                  >
-                  <span>{{ channel.auto_pause_enabled ? t('enabled') : t('disabled') }}</span>
+              <div class="grid w-full gap-3 text-left sm:grid-cols-2 lg:grid-cols-3">
+                <label class="inline-flex items-center justify-between gap-3 px-3 py-2 border rounded-md border-slate-200 dark:border-slate-700 sm:col-span-2 lg:col-span-3">
+                  <span class="text-sm font-medium text-slate-700 dark:text-slate-200">{{ t('auto-pause') }}</span>
+                  <span class="inline-flex items-center gap-2 text-sm">
+                    <input
+                      class="d-toggle d-toggle-sm"
+                      type="checkbox"
+                      :checked="channel.auto_pause_enabled"
+                      :disabled="!canUpdateChannelSettings"
+                      @change="saveChannelChange('auto_pause_enabled', !channel.auto_pause_enabled as any)"
+                    >
+                    <span>{{ channel.auto_pause_enabled ? t('enabled') : t('disabled') }}</span>
+                  </span>
                 </label>
-                <div class="flex flex-wrap justify-end gap-2">
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('failure-rate-bps') }}</span>
                   <input
-                    class="w-28 d-input d-input-sm d-input-bordered"
+                    class="w-full d-input d-input-sm d-input-bordered"
                     type="number"
                     min="0"
                     max="10000"
+                    :aria-label="t('failure-rate-bps')"
                     :disabled="!canUpdateChannelSettings"
-                    :placeholder="t('failure-rate-bps')"
                     :value="channel.auto_pause_failure_rate_bps ?? ''"
                     @change="saveAutoPauseFailureRate(($event.target as HTMLInputElement).value)"
                   >
+                </label>
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('auto-pause-action') }}</span>
                   <select
-                    class="d-select d-select-sm d-select-bordered"
+                    class="w-full d-select d-select-sm d-select-bordered"
+                    :aria-label="t('auto-pause-action')"
                     :disabled="!canUpdateChannelSettings"
                     :value="channel.auto_pause_action"
                     @change="saveChannelChange('auto_pause_action', ($event.target as HTMLSelectElement).value as any)"
@@ -922,7 +964,71 @@ async function copyCurlCommand() {
                       {{ t('notify') }}
                     </option>
                   </select>
-                </div>
+                </label>
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('window-minutes') }}</span>
+                  <input
+                    class="w-full d-input d-input-sm d-input-bordered"
+                    type="number"
+                    min="1"
+                    max="10080"
+                    :aria-label="t('window-minutes')"
+                    :disabled="!canUpdateChannelSettings"
+                    :value="channel.auto_pause_window_minutes"
+                    @change="saveIntegerField('auto_pause_window_minutes', ($event.target as HTMLInputElement).value, 1, 10080)"
+                  >
+                </label>
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('confidence') }}</span>
+                  <input
+                    class="w-full d-input d-input-sm d-input-bordered"
+                    type="number"
+                    min="0.0001"
+                    max="0.9999"
+                    step="0.0001"
+                    :aria-label="t('confidence')"
+                    :disabled="!canUpdateChannelSettings"
+                    :value="channel.auto_pause_confidence"
+                    @change="saveAutoPauseConfidence(($event.target as HTMLInputElement).value)"
+                  >
+                </label>
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('min-attempts') }}</span>
+                  <input
+                    class="w-full d-input d-input-sm d-input-bordered"
+                    type="number"
+                    min="0"
+                    :aria-label="t('min-attempts')"
+                    :disabled="!canUpdateChannelSettings"
+                    :value="channel.auto_pause_min_attempts ?? ''"
+                    @change="saveIntegerField('auto_pause_min_attempts', ($event.target as HTMLInputElement).value, 0, Number.MAX_SAFE_INTEGER, true)"
+                  >
+                </label>
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('min-failures') }}</span>
+                  <input
+                    class="w-full d-input d-input-sm d-input-bordered"
+                    type="number"
+                    min="0"
+                    :aria-label="t('min-failures')"
+                    :disabled="!canUpdateChannelSettings"
+                    :value="channel.auto_pause_min_failures ?? ''"
+                    @change="saveIntegerField('auto_pause_min_failures', ($event.target as HTMLInputElement).value, 0, Number.MAX_SAFE_INTEGER, true)"
+                  >
+                </label>
+                <label class="space-y-1">
+                  <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">{{ t('cooldown-minutes') }}</span>
+                  <input
+                    class="w-full d-input d-input-sm d-input-bordered"
+                    type="number"
+                    min="0"
+                    max="10080"
+                    :aria-label="t('cooldown-minutes')"
+                    :disabled="!canUpdateChannelSettings"
+                    :value="channel.auto_pause_cooldown_minutes"
+                    @change="saveIntegerField('auto_pause_cooldown_minutes', ($event.target as HTMLInputElement).value, 0, 10080)"
+                  >
+                </label>
               </div>
             </InfoRow>
             <InfoRow :label="t('channel-is-public')">

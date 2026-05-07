@@ -1892,5 +1892,13 @@
   "notify": "Notify",
   "auto-pause": "Auto-pause",
   "failure-rate-bps": "Failure bps",
-  "current-rollout-target": "Current rollout target"
+  "current-rollout-target": "Current rollout target",
+  "rollout-policy": "Rollout policy",
+  "cache-ttl-seconds": "Cache TTL seconds",
+  "auto-pause-action": "Action",
+  "window-minutes": "Window minutes",
+  "confidence": "Confidence",
+  "min-attempts": "Min attempts",
+  "min-failures": "Min failures",
+  "cooldown-minutes": "Cooldown minutes"
 }
