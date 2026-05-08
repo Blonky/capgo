@@ -271,61 +271,6 @@ GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp
 GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO service_role;
 
--- Restore the header-bound CLI app listing wrapper after the previous main-branch
--- migration drops the legacy version. The apikey argument remains compatibility-only
--- and must match the request capgkey header, preventing argument-only enumeration.
-CREATE OR REPLACE FUNCTION "public"."get_accessible_apps_for_apikey_v2"(
-  "apikey" "text" DEFAULT NULL
-) RETURNS SETOF "public"."apps"
-LANGUAGE "plpgsql" SECURITY DEFINER
-SET "search_path" TO ''
-AS $rollout_cli_apps$
-DECLARE
-  v_request_apikey text;
-  v_api_key public.apikeys%ROWTYPE;
-BEGIN
-  SELECT public.get_apikey_header() INTO v_request_apikey;
-
-  IF v_request_apikey IS NULL OR v_request_apikey = '' THEN
-    RETURN;
-  END IF;
-
-  IF apikey IS NOT NULL AND apikey <> '' AND apikey IS DISTINCT FROM v_request_apikey THEN
-    RETURN;
-  END IF;
-
-  SELECT * INTO v_api_key
-  FROM public.find_apikey_by_value(v_request_apikey)
-  LIMIT 1;
-
-  IF v_api_key.id IS NULL THEN
-    RETURN;
-  END IF;
-
-  RETURN QUERY
-  SELECT a.*
-  FROM public.apps a
-  WHERE public.rbac_check_permission_direct(
-    public.rbac_perm_app_read(),
-    v_api_key.user_id,
-    a.owner_org,
-    a.app_id,
-    NULL,
-    v_request_apikey
-  )
-  ORDER BY a.created_at DESC;
-END;
-$rollout_cli_apps$;
-
-ALTER FUNCTION "public"."get_accessible_apps_for_apikey_v2"("apikey" "text") OWNER TO "postgres";
-REVOKE ALL ON FUNCTION "public"."get_accessible_apps_for_apikey_v2"("apikey" "text") FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION "public"."get_accessible_apps_for_apikey_v2"("apikey" "text") TO "anon";
-GRANT EXECUTE ON FUNCTION "public"."get_accessible_apps_for_apikey_v2"("apikey" "text") TO "authenticated";
-GRANT EXECUTE ON FUNCTION "public"."get_accessible_apps_for_apikey_v2"("apikey" "text") TO "service_role";
-
-COMMENT ON FUNCTION "public"."get_accessible_apps_for_apikey_v2"("apikey" "text") IS 'Returns apps visible to the request capgkey using RBAC-aware permission checks with legacy fallback. The apikey argument is retained for CLI compatibility and must match the header when provided.';
-
-
 CREATE OR REPLACE FUNCTION public.delete_old_deleted_versions()
 RETURNS void
 LANGUAGE plpgsql
