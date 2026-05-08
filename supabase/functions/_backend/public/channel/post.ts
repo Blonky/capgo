@@ -185,6 +185,12 @@ export async function post(c: Context<MiddlewareKeyVariables>, body: ChannelSet,
     existingChannelVersion = existingChannel?.version ?? null
     existingRolloutVersion = existingChannel?.rollout_version ?? null
   }
+  if (body.rolloutVersion && body.version === undefined && existingChannelVersion === null) {
+    throw simpleError('missing_stable_version', 'Cannot set rollout target without a stable bundle', { app_id: body.app_id, channel: body.channel })
+  }
+  if (body.rolloutVersion && body.version === 'unknown') {
+    throw simpleError('missing_stable_version', 'Cannot set rollout target without a stable bundle', { app_id: body.app_id, channel: body.channel })
+  }
   const rolloutPausedAt = body.rolloutPausedAt !== undefined
     ? body.rolloutPausedAt
     : body.rolloutPaused == null ? undefined : body.rolloutPaused ? new Date().toISOString() : null

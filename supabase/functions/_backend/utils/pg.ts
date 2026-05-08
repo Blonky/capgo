@@ -749,6 +749,7 @@ export function requestInfosChannelPostgresRollout(
     .innerJoin(versionAlias, activeChannelVersionJoin(channelAlias.version, versionAlias))
     .leftJoin(rolloutVersionAlias, activeChannelVersionJoin(channelAlias.rollout_version, rolloutVersionAlias, channelAlias.app_id))
     .where(channelFilter)
+    .orderBy(channelAlias.name, channelAlias.id)
     .limit(1)
 
   cloudlog({ requestId: c.get('requestId'), message: 'channel rollout Query:', channelQuery: channelQuery.toSQL() })

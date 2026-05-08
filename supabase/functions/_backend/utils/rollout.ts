@@ -124,6 +124,8 @@ export function resolveRolloutDecision(input: RolloutDecisionInput): RolloutDeci
   const percentageBps = sanitizeRolloutPercentageBps(input.rolloutPercentageBps)
   const ttlSeconds = sanitizeRolloutCacheTtlSeconds(input.rolloutCacheTtlSeconds)
   const cached = isMatchingCachedDecision(input, input.cachePayload) ? input.cachePayload : null
+  const reportsRolloutVersion = input.currentVersionName === input.rolloutVersionName
+  const hasCachedRejection = cached?.selected === false
 
   if (!input.rolloutEnabled) {
     return {
@@ -135,7 +137,7 @@ export function resolveRolloutDecision(input: RolloutDecisionInput): RolloutDeci
     }
   }
 
-  if (input.currentVersionName === input.rolloutVersionName) {
+  if (reportsRolloutVersion && !hasCachedRejection) {
     return {
       selected: true,
       shouldWriteCache: true,

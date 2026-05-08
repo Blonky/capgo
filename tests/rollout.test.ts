@@ -110,6 +110,26 @@ describe('rollout decisions', () => {
     expect(decision.payload?.selected).toBe(true)
   })
 
+  it.concurrent('does not honor paused rollout version reports when cache says unselected', () => {
+    const decision = resolveRolloutDecision({
+      ...baseDecision,
+      currentVersionName: '1.1.0',
+      cachePayload: {
+        selected: false,
+        percentage_bps: 0,
+        rollout_id: baseDecision.rolloutId,
+        rollout_version: baseDecision.rolloutVersionId,
+        created_at: '2026-05-06T11:00:00.000Z',
+        updated_at: '2026-05-06T11:00:00.000Z',
+      },
+      rolloutPausedAt: '2026-05-06T11:30:00.000Z',
+      rolloutPercentageBps: 10000,
+    })
+
+    expect(decision.selected).toBe(false)
+    expect(decision.reason).toBe('paused')
+  })
+
   it.concurrent('moves devices already on rollout back to stable when disabled', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,
