@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import pack from '../../package.json'
-import { addAppOptionsSchema, cleanupOptionsSchema, getStatsOptionsSchema, requestBuildOptionsSchema, starAllRepositoriesOptionsSchema, starRepoOptionsSchema, updateAppOptionsSchema, updateChannelOptionsBaseSchema, uploadOptionsSchema } from '../schemas/sdk'
+import { addAppOptionsSchema, cleanupOptionsSchema, getStatsOptionsSchema, requestBuildOptionsSchema, starAllRepositoriesOptionsSchema, starRepoOptionsSchema, updateAppOptionsSchema, updateChannelOptionsBaseSchema, updateChannelOptionsSchema, uploadOptionsSchema } from '../schemas/sdk'
 import { CapgoSDK } from '../sdk'
 import { findSavedKey } from '../utils'
 
@@ -339,7 +339,7 @@ export async function startMcpServer(): Promise<void> {
     'Update channel settings including linked bundle and targeting options',
     updateChannelOptionsBaseSchema.pick({ appId: true, channelId: true, bundle: true, state: true, downgrade: true, ios: true, android: true, selfAssign: true, disableAutoUpdate: true, dev: true, emulator: true, device: true, prod: true, rolloutBundle: true, rolloutPercentage: true, rolloutPercentageBps: true, rolloutEnable: true, rolloutDisable: true, rolloutPause: true, rolloutResume: true, rolloutRollback: true, rolloutPromote: true, rolloutCacheTtlSeconds: true, autoPauseEnabled: true, autoPauseDisabled: true, autoPauseWindowMinutes: true, autoPauseFailureRateBps: true, autoPauseConfidence: true, autoPauseMinAttempts: true, autoPauseMinFailures: true, autoPauseAction: true, autoPauseCooldownMinutes: true }).shape,
     async ({ appId, channelId, bundle, state, downgrade, ios, android, selfAssign, disableAutoUpdate, dev, emulator, device, prod, rolloutBundle, rolloutPercentage, rolloutPercentageBps, rolloutEnable, rolloutDisable, rolloutPause, rolloutResume, rolloutRollback, rolloutPromote, rolloutCacheTtlSeconds, autoPauseEnabled, autoPauseDisabled, autoPauseWindowMinutes, autoPauseFailureRateBps, autoPauseConfidence, autoPauseMinAttempts, autoPauseMinFailures, autoPauseAction, autoPauseCooldownMinutes }) => {
-      const result = await sdk.updateChannel({
+      const payload = updateChannelOptionsSchema.parse({
         appId,
         channelId,
         bundle,
@@ -373,6 +373,7 @@ export async function startMcpServer(): Promise<void> {
         autoPauseAction,
         autoPauseCooldownMinutes,
       })
+      const result = await sdk.updateChannel(payload)
       if (!result.success) {
         return formatMcpError(result)
       }

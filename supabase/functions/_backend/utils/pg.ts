@@ -583,32 +583,42 @@ export async function getEffectiveDeviceChannelNamePostgres(
   }
 
   const platformQuery = platform === 'android' ? channelAlias.android : platform === 'electron' ? channelAlias.electron : channelAlias.ios
-  const channelQuery = drizzleClient
-    .select({ name: channelAlias.name })
-    .from(channelAlias)
-    .where(
-      fallback
-        ? and(
-            eq(channelAlias.app_id, app_id),
-            eq(channelAlias.name, fallback),
-            eq(platformQuery, true),
-            or(
+  const getChannelByName = async (channelName: string | null) => {
+    const channelQuery = drizzleClient
+      .select({ name: channelAlias.name })
+      .from(channelAlias)
+      .where(
+        channelName
+          ? and(
+              eq(channelAlias.app_id, app_id),
+              eq(channelAlias.name, channelName),
+              eq(platformQuery, true),
+              or(
+                eq(channelAlias.public, true),
+                eq(channelAlias.allow_device_self_set, true),
+              ),
+            )
+          : and(
               eq(channelAlias.public, true),
-              eq(channelAlias.allow_device_self_set, true),
+              eq(channelAlias.app_id, app_id),
+              eq(platformQuery, true),
             ),
-          )
-        : and(
-            eq(channelAlias.public, true),
-            eq(channelAlias.app_id, app_id),
-            eq(platformQuery, true),
-          ),
-    )
-    .orderBy(channelAlias.name, channelAlias.id)
-    .limit(1)
+      )
+      .orderBy(channelAlias.name, channelAlias.id)
+      .limit(1)
 
-  cloudlog({ requestId: c.get('requestId'), message: 'stats channel Query:', channelQuery: channelQuery.toSQL() })
-  const channel = await channelQuery.then(data => data.at(0))
-  return channel?.name ?? null
+    cloudlog({ requestId: c.get('requestId'), message: 'stats channel Query:', channelQuery: channelQuery.toSQL(), fallbackChannelName: channelName })
+    const channel = await channelQuery.then(data => data.at(0))
+    return channel?.name ?? null
+  }
+
+  if (fallback) {
+    const channelName = await getChannelByName(fallback)
+    if (channelName)
+      return channelName
+  }
+
+  return getChannelByName(null)
 }
 
 export function requestInfosChannelPostgres(
