@@ -502,6 +502,9 @@ export class CapgoSDK {
         path: options.path,
         bundle: options.bundle,
         channel: options.channel,
+        rollout: options.rollout,
+        rolloutPercentageBps: options.rolloutPercentageBps,
+        rolloutCacheTtlSeconds: options.rolloutCacheTtlSeconds,
         external: options.external,
         key: options.encrypt !== false, // default true unless explicitly false
         keyV2: options.encryptionKey,

@@ -121,13 +121,16 @@ export async function startMcpServer(): Promise<void> {
   server.tool(
     'capgo_upload_bundle',
     'Upload a new app bundle to Capgo Cloud for distribution',
-    uploadOptionsSchema.pick({ appId: true, path: true, bundle: true, channel: true, comment: true, minUpdateVersion: true, autoMinUpdateVersion: true, encrypt: true }).shape,
-    async ({ appId, path, bundle, channel, comment, minUpdateVersion, autoMinUpdateVersion, encrypt }) => {
+    uploadOptionsSchema.pick({ appId: true, path: true, bundle: true, channel: true, rollout: true, rolloutPercentageBps: true, rolloutCacheTtlSeconds: true, comment: true, minUpdateVersion: true, autoMinUpdateVersion: true, encrypt: true }).shape,
+    async ({ appId, path, bundle, channel, rollout, rolloutPercentageBps, rolloutCacheTtlSeconds, comment, minUpdateVersion, autoMinUpdateVersion, encrypt }) => {
       const result = await sdk.uploadBundle({
         appId,
         path,
         bundle,
         channel,
+        rollout,
+        rolloutPercentageBps,
+        rolloutCacheTtlSeconds,
         comment,
         minUpdateVersion,
         autoMinUpdateVersion,

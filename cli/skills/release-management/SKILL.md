@@ -19,6 +19,7 @@ Use this skill for OTA update workflows in Capgo Cloud.
 
 - Alias: `u`
 - Example: `npx @capgo/cli@latest bundle upload com.example.app --path ./dist --channel production`
+- Progressive rollout example: `npx @capgo/cli@latest bundle upload com.example.app --path ./dist --channel production --rollout 10`
 - Key behavior:
   - Bundle version must be greater than `0.0.0` and unique.
   - Deleted versions cannot be reused.
@@ -29,6 +30,9 @@ Use this skill for OTA update workflows in Capgo Cloud.
 - Important options:
   - `-p, --path <path>`
   - `-c, --channel <channel>`
+  - `--rollout <percentage>`
+  - `--rollout-percentage-bps <basisPoints>`
+  - `--rollout-cache-ttl-seconds <seconds>`
   - `-e, --external <url>`
   - `--iv-session-key <key>`
   - `-b, --bundle <bundle>`
