@@ -328,6 +328,7 @@ describe('[GET] /apikey with expiration info', () => {
       body: JSON.stringify({
         name: keyName('key-with-exp-get-test'),
         mode: 'all',
+        limited_to_orgs: [BASE_ORG_ID],
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       }),
     })
