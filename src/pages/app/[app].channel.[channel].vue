@@ -91,6 +91,18 @@ const rolloutStatusClass = computed(() => {
   }
   return 'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800/70 dark:bg-sky-950/30 dark:text-sky-200'
 })
+const rolloutPercentageText = computed(() => `${rolloutPercentage.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`)
+const rolloutProgressClass = computed(() => {
+  if (!rolloutConfigured.value || !channel.value?.rollout_enabled)
+    return 'bg-slate-300 dark:bg-slate-600'
+  if (channel.value.rollout_paused_at)
+    return 'bg-amber-500 dark:bg-amber-400'
+  return 'bg-sky-500 dark:bg-sky-400'
+})
+const rolloutProgressStyle = computed(() => {
+  const percentage = Math.max(0, Math.min(100, rolloutPercentage.value))
+  return `width: ${percentage}%`
+})
 
 const canUpdateChannelSettings = computedAsync(async () => {
   if (!packageId.value)
@@ -99,6 +111,7 @@ const canUpdateChannelSettings = computedAsync(async () => {
 }, false)
 const rolloutControlsDisabled = computed(() => !canUpdateChannelSettings.value)
 const rolloutActionsDisabled = computed(() => rolloutControlsDisabled.value || !rolloutConfigured.value)
+const rolloutPauseDisabled = computed(() => rolloutActionsDisabled.value || !channel.value?.rollout_enabled)
 
 const canPromoteBundle = computedAsync(async () => {
   if (!id.value)
@@ -866,88 +879,115 @@ async function copyCurlCommand() {
               {{ channel.version.comment }}
             </InfoRow>
             <div class="px-4 py-5 sm:px-6">
-              <section class="space-y-5" aria-labelledby="rollout-settings-title">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div class="min-w-0 space-y-1">
-                    <h2 id="rollout-settings-title" class="text-sm font-semibold text-slate-950 dark:text-white">
-                      {{ t('progressive-rollout') }}
-                    </h2>
-                    <p class="text-sm text-slate-500 dark:text-slate-400">
-                      {{ t('rollout-target') }}:
-                      <span class="font-medium text-slate-800 dark:text-slate-100">
-                        {{ channel?.rollout_version_info?.name ?? t('not-configured') }}
-                      </span>
-                    </p>
-                    <p v-if="channel.rollout_pause_reason" class="text-xs text-amber-700 dark:text-amber-300">
-                      {{ channel.rollout_pause_reason }}
-                    </p>
+              <section class="space-y-6" aria-labelledby="rollout-settings-title">
+                <div class="space-y-4">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="min-w-0 space-y-1">
+                      <h2 id="rollout-settings-title" class="text-base font-semibold text-slate-950 dark:text-white">
+                        {{ t('progressive-rollout') }}
+                      </h2>
+                      <p v-if="channel.rollout_pause_reason" class="text-xs text-amber-700 dark:text-amber-300">
+                        {{ channel.rollout_pause_reason }}
+                      </p>
+                    </div>
+                    <span class="inline-flex min-h-9 items-center self-start rounded-md border px-3 text-xs font-semibold" :class="rolloutStatusClass">
+                      {{ rolloutStatusLabel }}
+                    </span>
                   </div>
-                  <span class="inline-flex min-h-9 items-center self-start rounded-md border px-3 text-xs font-semibold" :class="rolloutStatusClass">
-                    {{ rolloutStatusLabel }}
-                  </span>
+
+                  <dl class="grid border-y border-slate-200 text-sm dark:border-slate-700 sm:grid-cols-3 sm:divide-x sm:divide-slate-200 sm:dark:divide-slate-700">
+                    <div class="py-3 sm:px-4 sm:first:pl-0">
+                      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {{ t('rollout-target') }}
+                      </dt>
+                      <dd class="mt-1 font-semibold text-slate-900 dark:text-white">
+                        {{ channel?.rollout_version_info?.name ?? t('not-configured') }}
+                      </dd>
+                    </div>
+                    <div class="border-t border-slate-200 py-3 dark:border-slate-700 sm:border-t-0 sm:px-4">
+                      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {{ t('rollout-percentage') }}
+                      </dt>
+                      <dd class="mt-1 font-semibold text-slate-900 dark:text-white">
+                        {{ rolloutPercentageText }}
+                      </dd>
+                    </div>
+                    <div class="border-t border-slate-200 py-3 dark:border-slate-700 sm:border-t-0 sm:px-4 sm:last:pr-0">
+                      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {{ t('cache-ttl-seconds') }}
+                      </dt>
+                      <dd class="mt-1 font-semibold text-slate-900 dark:text-white">
+                        {{ channel.rollout_cache_ttl_seconds }}
+                      </dd>
+                    </div>
+                  </dl>
                 </div>
 
-                <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                  <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="space-y-1.5">
-                      <span class="block text-xs font-medium text-slate-500 dark:text-slate-400">{{ t('rollout-percentage') }}</span>
-                      <div class="flex min-h-11 items-center rounded-md border border-slate-200 bg-white px-3 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-100 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-sky-700 dark:focus-within:ring-sky-950">
-                        <input
-                          class="w-full bg-transparent text-sm font-medium text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-40 dark:text-white"
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          :aria-label="t('rollout-percentage')"
-                          :disabled="rolloutControlsDisabled"
-                          :value="rolloutPercentage"
-                          @change="saveRolloutPercentage(($event.target as HTMLInputElement).value)"
-                        >
-                        <span class="text-sm text-slate-400 dark:text-slate-500">%</span>
-                      </div>
-                    </label>
-                    <label class="space-y-1.5">
-                      <span class="block text-xs font-medium text-slate-500 dark:text-slate-400">{{ t('cache-ttl-seconds') }}</span>
-                      <input
-                        class="min-h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-sky-700 dark:focus:ring-sky-950"
-                        type="number"
-                        min="60"
-                        max="31536000"
-                        step="60"
-                        :aria-label="t('cache-ttl-seconds')"
-                        :disabled="rolloutControlsDisabled"
-                        :value="channel.rollout_cache_ttl_seconds"
-                        @change="saveIntegerField('rollout_cache_ttl_seconds', ($event.target as HTMLInputElement).value, 60, 31536000)"
-                      >
-                    </label>
+                <div class="space-y-3">
+                  <div class="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-900">
+                    <div class="h-full rounded-full transition-[width] duration-200" :class="rolloutProgressClass" :style="rolloutProgressStyle" />
                   </div>
 
-                  <div class="flex flex-wrap gap-2 lg:justify-end">
-                    <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutControlsDisabled" @click="openSelectRolloutVersion()">
-                      {{ t('set-rollout-target') }}
-                    </button>
-                    <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutActionsDisabled" @click="saveChannelChange('rollout_enabled', !channel.rollout_enabled as any)">
-                      {{ channel.rollout_enabled ? t('disable') : t('enable') }}
-                    </button>
-                    <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutActionsDisabled" @click="toggleRolloutPause()">
-                      {{ channel.rollout_paused_at ? t('resume') : t('pause') }}
-                    </button>
-                    <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutActionsDisabled" @click="promoteRollout()">
-                      {{ t('promote') }}
-                    </button>
-                    <button class="min-h-11 capitalize d-btn d-btn-error d-btn-outline" :disabled="rolloutActionsDisabled" @click="rollbackRollout()">
-                      {{ t('rollback') }}
-                    </button>
+                  <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <label class="space-y-1.5">
+                        <span class="block text-xs font-medium text-slate-500 dark:text-slate-400">{{ t('rollout-percentage') }}</span>
+                        <div class="flex min-h-11 items-center rounded-md border border-slate-200 bg-white px-3 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-100 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-sky-700 dark:focus-within:ring-sky-950">
+                          <input
+                            class="w-full bg-transparent text-sm font-medium text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-40 dark:text-white"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            :aria-label="t('rollout-percentage')"
+                            :disabled="rolloutControlsDisabled"
+                            :value="rolloutPercentage"
+                            @change="saveRolloutPercentage(($event.target as HTMLInputElement).value)"
+                          >
+                          <span class="text-sm text-slate-400 dark:text-slate-500">%</span>
+                        </div>
+                      </label>
+                      <label class="space-y-1.5">
+                        <span class="block text-xs font-medium text-slate-500 dark:text-slate-400">{{ t('cache-ttl-seconds') }}</span>
+                        <input
+                          class="min-h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-sky-700 dark:focus:ring-sky-950"
+                          type="number"
+                          min="60"
+                          max="31536000"
+                          step="60"
+                          :aria-label="t('cache-ttl-seconds')"
+                          :disabled="rolloutControlsDisabled"
+                          :value="channel.rollout_cache_ttl_seconds"
+                          @change="saveIntegerField('rollout_cache_ttl_seconds', ($event.target as HTMLInputElement).value, 60, 31536000)"
+                        >
+                      </label>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 lg:justify-end">
+                      <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutControlsDisabled" @click="openSelectRolloutVersion()">
+                        {{ t('set-rollout-target') }}
+                      </button>
+                      <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutActionsDisabled" @click="saveChannelChange('rollout_enabled', !channel.rollout_enabled as any)">
+                        {{ channel.rollout_enabled ? t('disable') : t('enable') }}
+                      </button>
+                      <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutPauseDisabled" @click="toggleRolloutPause()">
+                        {{ channel.rollout_paused_at ? t('resume') : t('pause') }}
+                      </button>
+                      <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutActionsDisabled" @click="promoteRollout()">
+                        {{ t('promote') }}
+                      </button>
+                      <button class="min-h-11 capitalize d-btn d-btn-error d-btn-outline" :disabled="rolloutActionsDisabled" @click="rollbackRollout()">
+                        {{ t('rollback') }}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 <div class="border-t border-slate-200 pt-5 dark:border-slate-700/80">
                   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div class="space-y-1">
-                      <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
-                        {{ t('auto-pause') }}
-                      </h3>
-                    </div>
+                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">
+                      {{ t('auto-pause') }}
+                    </h3>
                     <label class="inline-flex min-h-11 items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
                       <input
                         class="d-toggle d-toggle-sm"
