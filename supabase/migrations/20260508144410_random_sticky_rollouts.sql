@@ -5,6 +5,13 @@ ADD COLUMN "rollout_paused_version_names" character varying[] NOT NULL DEFAULT '
 ALTER TABLE "public"."version_usage"
 ADD COLUMN "channel_name" character varying(255);
 
+ALTER TABLE "public"."version_usage"
+ADD COLUMN "channel_id" bigint;
+
+CREATE INDEX IF NOT EXISTS "idx_version_usage_app_channel_time"
+ON "public"."version_usage" ("app_id", "channel_id", "timestamp")
+WHERE "channel_id" IS NOT NULL;
+
 ALTER TABLE "public"."channels"
 ADD COLUMN "rollout_version" bigint,
 ADD COLUMN "rollout_percentage_bps" integer NOT NULL DEFAULT 0,
@@ -238,8 +245,9 @@ REVOKE ALL ON FUNCTION public.update_app_versions_retention() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.update_app_versions_retention() TO service_role;
 
 DROP FUNCTION IF EXISTS public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone);
+DROP FUNCTION IF EXISTS public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text);
 
-CREATE OR REPLACE FUNCTION public.read_version_usage(p_app_id character varying, p_period_start timestamp without time zone, p_period_end timestamp without time zone, p_channel_name text DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.read_version_usage(p_app_id character varying, p_period_start timestamp without time zone, p_period_end timestamp without time zone, p_channel_name text DEFAULT NULL, p_channel_id bigint DEFAULT NULL)
 RETURNS TABLE(app_id character varying, version_name character varying, date timestamp without time zone, "get" bigint, fail bigint, install bigint, uninstall bigint)
 LANGUAGE plpgsql
 SET search_path TO ''
@@ -260,16 +268,17 @@ BEGIN
     AND vu.timestamp >= p_period_start
     AND vu.timestamp < p_period_end
     AND (p_channel_name IS NULL OR vu.channel_name = p_channel_name)
+    AND (p_channel_id IS NULL OR vu.channel_id = p_channel_id)
   GROUP BY date, vu.app_id, COALESCE(vu.version_name, av.name)
   ORDER BY date;
 END;
 $$;
 
-ALTER FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) OWNER TO postgres;
-REVOKE ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO anon;
-GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text) TO service_role;
+ALTER FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text, bigint) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text, bigint) TO anon;
+GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.read_version_usage(character varying, timestamp without time zone, timestamp without time zone, text, bigint) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.delete_old_deleted_versions()
 RETURNS void

@@ -91,10 +91,10 @@ async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClien
     statsActions.push({ action: 'customIdBlocked' })
   }
 
-  let effectiveStatsChannelNamePromise: Promise<string | null> | undefined
-  const getEffectiveStatsChannelName = () => {
-    effectiveStatsChannelNamePromise ??= getEffectiveDeviceChannelNamePostgres(c, app_id, device.device_id, normalizeStatsChannelName(device.default_channel), device.platform, appOwner.channel_device_count > 0, drizzleClient as ReturnType<typeof getDrizzleClient>)
-    return effectiveStatsChannelNamePromise
+  let effectiveStatsChannelPromise: ReturnType<typeof getEffectiveDeviceChannelNamePostgres> | undefined
+  const getEffectiveStatsChannel = () => {
+    effectiveStatsChannelPromise ??= getEffectiveDeviceChannelNamePostgres(c, app_id, device.device_id, normalizeStatsChannelName(device.default_channel), device.platform, appOwner.channel_device_count > 0, drizzleClient as ReturnType<typeof getDrizzleClient>)
+    return effectiveStatsChannelPromise
   }
 
   // Extract version from composite format if present (e.g., "1.2.3:main.js" -> "1.2.3")
@@ -121,11 +121,11 @@ async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClien
   // device.version = appVersion.id
   if (action === 'set' && !device.is_emulator && device.is_prod) {
     // Use versionOnly from the request body and resolve channel overrides only when configured.
-    await createStatsVersion(c, versionOnly, app_id, 'install', await getEffectiveStatsChannelName())
+    await createStatsVersion(c, versionOnly, app_id, 'install', await getEffectiveStatsChannel())
     if (old_version_name) {
       const oldVersion = await getAppVersionPostgres(c, app_id, old_version_name, undefined, drizzleClient as ReturnType<typeof getDrizzleClient>)
       if (oldVersion && oldVersion.id !== appVersion.id) {
-        await createStatsVersion(c, old_version_name, app_id, 'uninstall', await getEffectiveStatsChannelName())
+        await createStatsVersion(c, old_version_name, app_id, 'uninstall', await getEffectiveStatsChannel())
         statsActions.push({ action: 'uninstall', versionName: old_version_name ?? 'unknown' })
       }
     }
@@ -138,7 +138,7 @@ async function post(c: Context, drizzleClient: ReturnType<typeof getDrizzleClien
 
     if (shouldCountDownloadFail && !device.is_emulator && device.is_prod) {
       // Keep version_usage fail and install cohorts aligned for rollout auto-pause.
-      await createStatsVersion(c, versionOnly, app_id, 'fail', await getEffectiveStatsChannelName())
+      await createStatsVersion(c, versionOnly, app_id, 'fail', await getEffectiveStatsChannel())
       cloudlog({ requestId: c.get('requestId'), message: 'FAIL!' })
       // Daily fail ratio emails are now sent via cron job that checks aggregate stats
       // instead of per-device notifications. See process_daily_fail_ratio_email.

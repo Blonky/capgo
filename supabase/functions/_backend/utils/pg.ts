@@ -570,7 +570,7 @@ export async function getEffectiveDeviceChannelNamePostgres(
 
   if (hasChannelDeviceOverrides) {
     const channelQuery = drizzleClient
-      .select({ name: channelAlias.name })
+      .select({ id: channelAlias.id, name: channelAlias.name })
       .from(channelDevicesAlias)
       .innerJoin(channelAlias, and(eq(channelDevicesAlias.channel_id, channelAlias.id), eq(channelAlias.app_id, app_id)))
       .where(and(eq(channelDevicesAlias.device_id, device_id), eq(channelDevicesAlias.app_id, app_id)))
@@ -579,13 +579,13 @@ export async function getEffectiveDeviceChannelNamePostgres(
     cloudlog({ requestId: c.get('requestId'), message: 'stats channel override Query:', channelQuery: channelQuery.toSQL() })
     const channel = await channelQuery.then(data => data.at(0))
     if (channel?.name)
-      return channel.name
+      return channel
   }
 
   const platformQuery = platform === 'android' ? channelAlias.android : platform === 'electron' ? channelAlias.electron : channelAlias.ios
   const getChannelByName = async (channelName: string | null) => {
     const channelQuery = drizzleClient
-      .select({ name: channelAlias.name })
+      .select({ id: channelAlias.id, name: channelAlias.name })
       .from(channelAlias)
       .where(
         channelName
@@ -609,7 +609,7 @@ export async function getEffectiveDeviceChannelNamePostgres(
 
     cloudlog({ requestId: c.get('requestId'), message: 'stats channel Query:', channelQuery: channelQuery.toSQL(), fallbackChannelName: channelName })
     const channel = await channelQuery.then(data => data.at(0))
-    return channel?.name ?? null
+    return channel?.name ? channel : null
   }
 
   if (fallback) {

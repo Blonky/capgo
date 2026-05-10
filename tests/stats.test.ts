@@ -205,13 +205,14 @@ describe('[POST] /stats', () => {
 
       const { data: usage, error: usageError } = await supabase
         .from('version_usage')
-        .select('channel_name')
+        .select('channel_id, channel_name')
         .eq('app_id', appId)
         .eq('version_name', version.name)
         .eq('action', 'install')
         .single()
 
       expect(usageError).toBeNull()
+      expect(usage?.channel_id).toBe(channel!.id)
       expect(usage?.channel_name).toBe(overrideChannelName)
     }
     finally {

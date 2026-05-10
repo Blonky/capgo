@@ -67,7 +67,7 @@ async function evaluateChannel(c: Parameters<typeof supabaseAdmin>[0], supabase:
     return { skipped: true, reason: 'missing_rollout_version_name' }
 
   const start = getWindowStart(channel.auto_pause_window_minutes, now)
-  const stats = await readStatsVersion(c, channel.app_id, start, now.toISOString(), channel.name)
+  const stats = await readStatsVersion(c, channel.app_id, start, now.toISOString(), { id: channel.id, name: channel.name })
   const totals = stats
     .filter(row => row.version_name === versionName)
     .reduce((acc, row) => {
