@@ -103,6 +103,7 @@ const rolloutProgressStyle = computed(() => {
   const percentage = Math.max(0, Math.min(100, rolloutPercentage.value))
   return `width: ${percentage}%`
 })
+const showRolloutSettings = computed(() => !!channel.value?.rollout_enabled || !!channel.value?.rollout_paused_at)
 
 const canUpdateChannelSettings = computedAsync(async () => {
   if (!packageId.value)
@@ -878,7 +879,7 @@ async function copyCurlCommand() {
             <InfoRow v-if="channel.version.comment" :label="t('bundle-comment')">
               {{ channel.version.comment }}
             </InfoRow>
-            <div class="px-4 py-5 sm:px-6">
+            <div v-if="showRolloutSettings" class="px-4 py-5 sm:px-6">
               <section class="space-y-6" aria-labelledby="rollout-settings-title">
                 <div class="space-y-4">
                   <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
