@@ -41,6 +41,26 @@ describe('rollout decisions', () => {
     expect(decision.payload?.selected).toBe(true)
   })
 
+  it.concurrent('does not honor cached selected devices when percentage is 0', () => {
+    const decision = resolveRolloutDecision({
+      ...baseDecision,
+      rolloutPercentageBps: 0,
+      cachePayload: {
+        selected: true,
+        percentage_bps: 5000,
+        rollout_id: baseDecision.rolloutId,
+        rollout_version: baseDecision.rolloutVersionId,
+        created_at: '2026-05-06T11:00:00.000Z',
+        updated_at: '2026-05-06T11:00:00.000Z',
+      },
+      randomBps: () => 0,
+    })
+
+    expect(decision.selected).toBe(false)
+    expect(decision.reason).toBe('percentage_zero')
+    expect(decision.shouldWriteCache).toBe(false)
+  })
+
   it.concurrent('keeps cached unselected devices stable when percentage is unchanged', () => {
     const decision = resolveRolloutDecision({
       ...baseDecision,

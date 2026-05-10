@@ -157,22 +157,22 @@ export function resolveRolloutDecision(input: RolloutDecisionInput): RolloutDeci
     }
   }
 
-  if (cached?.selected) {
-    return {
-      selected: true,
-      shouldWriteCache: false,
-      payload: cached,
-      reason: 'cached_selected',
-      ttlSeconds,
-    }
-  }
-
   if (percentageBps <= 0) {
     return {
       selected: false,
       shouldWriteCache: false,
       payload: cached,
       reason: 'percentage_zero',
+      ttlSeconds,
+    }
+  }
+
+  if (cached?.selected) {
+    return {
+      selected: true,
+      shouldWriteCache: false,
+      payload: cached,
+      reason: 'cached_selected',
       ttlSeconds,
     }
   }

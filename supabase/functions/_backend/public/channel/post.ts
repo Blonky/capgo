@@ -172,18 +172,29 @@ export async function post(c: Context<MiddlewareKeyVariables>, body: ChannelSet,
   if (body.autoPauseAction && !['pause', 'rollback', 'notify'].includes(body.autoPauseAction)) {
     throw simpleError('invalid_auto_pause_action', 'Auto-pause action must be pause, rollback, or notify', { autoPauseAction: body.autoPauseAction })
   }
-  const shouldLoadExistingChannel = body.version === undefined || body.promoteToStable
+  const changesRolloutTarget = body.rolloutVersion !== undefined || !!body.rollback || !!body.promoteToStable
+  const shouldLoadExistingChannel = body.version === undefined || changesRolloutTarget
   let existingChannelVersion: number | null = null
   let existingRolloutVersion: number | null = null
+  let existingChannelId: number | null = null
   if (shouldLoadExistingChannel) {
     const { data: existingChannel } = await supabaseApikey(c, apikey.key)
       .from('channels')
-      .select('version, rollout_version')
+      .select('id, version, rollout_version')
       .eq('app_id', body.app_id)
       .eq('name', body.channel)
       .maybeSingle()
+    existingChannelId = existingChannel?.id ?? null
     existingChannelVersion = existingChannel?.version ?? null
     existingRolloutVersion = existingChannel?.rollout_version ?? null
+  }
+  if (changesRolloutTarget) {
+    if (existingChannelId === null) {
+      throw simpleError('cannot_find_channel', 'Cannot find channel', { app_id: body.app_id, channel: body.channel })
+    }
+    if (!(await checkPermission(c, 'channel.promote_bundle', { appId: body.app_id, channelId: existingChannelId }))) {
+      throw simpleError('cannot_promote_bundle', 'You can\'t promote bundles on this channel', { app_id: body.app_id, channel: body.channel, channelId: existingChannelId })
+    }
   }
   if (body.rolloutVersion && body.version === undefined && existingChannelVersion === null) {
     throw simpleError('missing_stable_version', 'Cannot set rollout target without a stable bundle', { app_id: body.app_id, channel: body.channel })

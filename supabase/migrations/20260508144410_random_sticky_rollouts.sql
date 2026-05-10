@@ -157,6 +157,17 @@ SET "search_path" TO ''
 AS $$
 BEGIN
   IF NEW."rollout_version" IS DISTINCT FROM OLD."rollout_version" THEN
+    IF ("auth"."uid"() IS NOT NULL OR "public"."get_apikey_header"() IS NOT NULL)
+      AND NOT "public"."rbac_check_permission_request"(
+        "public"."rbac_perm_channel_promote_bundle"(),
+        NEW."owner_org",
+        NEW."app_id",
+        NEW."id"
+      )
+    THEN
+      RAISE EXCEPTION 'NO_RIGHTS';
+    END IF;
+
     NEW."rollout_id" = gen_random_uuid();
     IF NEW."rollout_version" IS NULL THEN
       NEW."rollout_paused_at" = NULL;

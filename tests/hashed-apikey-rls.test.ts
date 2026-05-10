@@ -1042,16 +1042,21 @@ describe('rls policies with hashed api keys (via supabase sdk)', () => {
 })
 
 describe('channels rls blocks direct api-key updates', () => {
-  let allKey: { id: number, key: string, key_hash: string } | null = null
+  let allKey: { id: number, key: string, key_hash: string, rbac_id?: string } | null = null
   let writeKey: { id: number, key: string, key_hash: string } | null = null
   let versionId: number | null = null
   let channelId: number | null = null
+  let appRbacId: string | null = null
   const versionName = `rls-direct-version-${randomUUID().slice(0, 8)}`
   const channelName = `rls-direct-channel-${randomUUID().slice(0, 8)}`
 
   beforeAll(async () => {
     allKey = await createHashedApiKey('test-channel-direct-all-key', 'all', [ORG_ID_RLS], [APP_NAME_RLS])
     writeKey = await createHashedApiKey('test-channel-direct-write-key', 'write', [ORG_ID_RLS], [APP_NAME_RLS])
+    const apiKeyResult = await pool.query('SELECT rbac_id FROM public.apikeys WHERE id = $1', [allKey.id])
+    allKey.rbac_id = apiKeyResult.rows[0].rbac_id
+    const appResult = await pool.query('SELECT id FROM public.apps WHERE app_id = $1', [APP_NAME_RLS])
+    appRbacId = appResult.rows[0].id
 
     const versionResult = await pool.query(
       `INSERT INTO public.app_versions (app_id, name, owner_org, user_id, checksum, storage_provider, r2_path, deleted)
@@ -1151,6 +1156,99 @@ describe('channels rls blocks direct api-key updates', () => {
       'UPDATE public.channels SET allow_emulator = false WHERE id = $1',
       [channelId],
     )
+  })
+
+  it('requires channel promote permission for direct rollout target changes', async () => {
+    if (!allKey || !allKey.rbac_id || !appRbacId || !channelId || !versionId)
+      throw new Error('RLS channel test setup did not complete')
+
+    const orgResult = await pool.query('SELECT use_new_rbac FROM public.orgs WHERE id = $1', [ORG_ID_RLS])
+    const previousUseNewRbac = orgResult.rows[0]?.use_new_rbac ?? false
+    await pool.query('UPDATE public.orgs SET use_new_rbac = true WHERE id = $1', [ORG_ID_RLS])
+    await pool.query(
+      `INSERT INTO public.role_bindings (
+        principal_type, principal_id, role_id, scope_type, org_id, app_id, granted_by, reason, is_direct
+      ) VALUES (
+        public.rbac_principal_apikey(),
+        $1,
+        (SELECT id FROM public.roles WHERE name = public.rbac_role_app_admin()),
+        public.rbac_scope_app(),
+        $2,
+        $3,
+        $4,
+        'hashed-apikey-rls channel direct update test',
+        true
+      )`,
+      [allKey.rbac_id, ORG_ID_RLS, appRbacId, USER_ID_RLS],
+    )
+    await pool.query(
+      `INSERT INTO public.channel_permission_overrides (
+        principal_type, principal_id, channel_id, permission_key, is_allowed
+      ) VALUES (
+        public.rbac_principal_apikey(),
+        $1,
+        $2,
+        public.rbac_perm_channel_promote_bundle(),
+        false
+      )
+      ON CONFLICT (principal_type, principal_id, channel_id, permission_key)
+      DO UPDATE SET is_allowed = excluded.is_allowed`,
+      [allKey.rbac_id, channelId],
+    )
+
+    try {
+      await expect(execWithRoleClaims(
+        'UPDATE public.channels SET rollout_version = $1 WHERE id = $2 RETURNING id, rollout_version',
+        {
+          role: 'anon',
+          claims: {
+            role: 'anon',
+            aud: 'anon',
+          },
+          headers: { capgkey: allKey.key },
+          params: [versionId, channelId],
+        },
+      )).rejects.toThrow(/NO_RIGHTS/)
+
+      const result = await execWithRoleClaims(
+        'UPDATE public.channels SET allow_emulator = true WHERE id = $1 RETURNING id, allow_emulator',
+        {
+          role: 'anon',
+          claims: {
+            role: 'anon',
+            aud: 'anon',
+          },
+          headers: { capgkey: allKey.key },
+          params: [channelId],
+        },
+      )
+
+      expect(result.rowCount).toBe(1)
+      expect(result.rows[0].allow_emulator).toBe(true)
+    }
+    finally {
+      await pool.query(
+        `DELETE FROM public.channel_permission_overrides
+         WHERE principal_type = public.rbac_principal_apikey()
+           AND principal_id = $1
+           AND channel_id = $2
+           AND permission_key = public.rbac_perm_channel_promote_bundle()`,
+        [allKey.rbac_id, channelId],
+      )
+      await pool.query(
+        `DELETE FROM public.role_bindings
+         WHERE principal_type = public.rbac_principal_apikey()
+           AND principal_id = $1
+           AND app_id = $2
+           AND scope_type = public.rbac_scope_app()`,
+        [allKey.rbac_id, appRbacId],
+      )
+      await pool.query('UPDATE public.orgs SET use_new_rbac = $1 WHERE id = $2', [previousUseNewRbac, ORG_ID_RLS])
+      await pool.query(
+        'UPDATE public.channels SET allow_emulator = false, rollout_version = NULL WHERE id = $1',
+        [channelId],
+      )
+    }
   })
 })
 
