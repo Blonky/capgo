@@ -18,6 +18,8 @@ import {
 
 const id = randomUUID()
 const APP_NAME_METADATA = `${APP_NAME}.${id}`
+const USE_CLOUDFLARE = process.env.USE_CLOUDFLARE_WORKERS === 'true'
+const describeBackend = describe.skipIf(USE_CLOUDFLARE)
 
 interface UpdateRes {
   error?: string
@@ -30,15 +32,19 @@ interface UpdateRes {
 }
 
 beforeAll(async () => {
+  if (USE_CLOUDFLARE)
+    return
   await resetAndSeedAppData(APP_NAME_METADATA)
 })
 
 afterAll(async () => {
+  if (USE_CLOUDFLARE)
+    return
   await resetAppData(APP_NAME_METADATA)
   await resetAppDataStats(APP_NAME_METADATA)
 })
 
-describe('expose_metadata feature', () => {
+describeBackend('expose_metadata feature', () => {
   const supabase = getSupabaseClient()
 
   describe('[PUT] /app - expose_metadata field', () => {
