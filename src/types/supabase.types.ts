@@ -256,6 +256,8 @@ export type Database = {
           allow_preview: boolean
           android_store_url: string | null
           app_id: string
+          build_timeout_seconds: number
+          build_timeout_updated_at: string
           channel_device_count: number
           created_at: string | null
           default_upload_channel: string
@@ -283,6 +285,8 @@ export type Database = {
           allow_preview?: boolean
           android_store_url?: string | null
           app_id: string
+          build_timeout_seconds?: number
+          build_timeout_updated_at?: string
           channel_device_count?: number
           created_at?: string | null
           default_upload_channel?: string
@@ -310,6 +314,8 @@ export type Database = {
           allow_preview?: boolean
           android_store_url?: string | null
           app_id?: string
+          build_timeout_seconds?: number
+          build_timeout_updated_at?: string
           channel_device_count?: number
           created_at?: string | null
           default_upload_channel?: string
@@ -490,6 +496,7 @@ export type Database = {
           owner_org: string
           platform: string
           requested_by: string
+          runner_wait_seconds: number
           status: string
           updated_at: string
           upload_expires_at: string
@@ -508,6 +515,7 @@ export type Database = {
           owner_org: string
           platform: string
           requested_by: string
+          runner_wait_seconds?: number
           status?: string
           updated_at?: string
           upload_expires_at: string
@@ -526,6 +534,7 @@ export type Database = {
           owner_org?: string
           platform?: string
           requested_by?: string
+          runner_wait_seconds?: number
           status?: string
           updated_at?: string
           upload_expires_at?: string
@@ -1908,6 +1917,7 @@ export type Database = {
           market_desc: string | null
           mau: number
           name: string
+          native_build_concurrency: number
           price_m: number
           price_m_id: string
           price_y: number
@@ -1926,6 +1936,7 @@ export type Database = {
           market_desc?: string | null
           mau?: number
           name?: string
+          native_build_concurrency?: number
           price_m?: number
           price_m_id: string
           price_y?: number
@@ -1944,6 +1955,7 @@ export type Database = {
           market_desc?: string | null
           mau?: number
           name?: string
+          native_build_concurrency?: number
           price_m?: number
           price_m_id?: string
           price_y?: number
@@ -2215,6 +2227,7 @@ export type Database = {
           created_at: string
           device_id: string
           id: number
+          metadata: Json | null
           version_name: string
         }
         Insert: {
@@ -2223,6 +2236,7 @@ export type Database = {
           created_at: string
           device_id: string
           id?: never
+          metadata?: Json | null
           version_name?: string
         }
         Update: {
@@ -2231,6 +2245,7 @@ export type Database = {
           created_at?: string
           device_id?: string
           id?: never
+          metadata?: Json | null
           version_name?: string
         }
         Relationships: []
@@ -3400,6 +3415,7 @@ export type Database = {
           bandwidth: number
           build_time_unit: number
           mau: number
+          native_build_concurrency: number
           storage: number
         }[]
       }
@@ -4627,6 +4643,20 @@ export type Database = {
         | "disableDevice"
         | "disablePlatformElectron"
         | "customIdBlocked"
+        | "app_crash"
+        | "app_crash_native"
+        | "app_anr"
+        | "app_killed_low_memory"
+        | "app_killed_excessive_resource_usage"
+        | "app_initialization_failure"
+        | "app_memory_warning"
+        | "webview_javascript_error"
+        | "webview_unhandled_rejection"
+        | "webview_resource_error"
+        | "webview_security_policy_violation"
+        | "webview_unclean_restart"
+        | "webview_render_process_gone"
+        | "webview_content_process_terminated"
       stripe_status:
         | "created"
         | "succeeded"
@@ -4882,6 +4912,20 @@ export const Constants = {
         "disableDevice",
         "disablePlatformElectron",
         "customIdBlocked",
+        "app_crash",
+        "app_crash_native",
+        "app_anr",
+        "app_killed_low_memory",
+        "app_killed_excessive_resource_usage",
+        "app_initialization_failure",
+        "app_memory_warning",
+        "webview_javascript_error",
+        "webview_unhandled_rejection",
+        "webview_resource_error",
+        "webview_security_policy_violation",
+        "webview_unclean_restart",
+        "webview_render_process_gone",
+        "webview_content_process_terminated",
       ],
       stripe_status: [
         "created",

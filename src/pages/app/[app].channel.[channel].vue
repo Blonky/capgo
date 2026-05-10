@@ -14,6 +14,7 @@ import IconInformation from '~icons/heroicons/information-circle'
 import IconSearch from '~icons/ic/round-search?raw'
 import IconAlertCircle from '~icons/lucide/alert-circle'
 import IconWarning from '~icons/lucide/alert-triangle'
+import IconExternalLink from '~icons/lucide/external-link'
 import IconDown from '~icons/material-symbols/keyboard-arrow-down-rounded'
 import { formatDate, formatLocalDate } from '~/services/date'
 import { checkPermissions } from '~/services/permissions'
@@ -220,7 +221,12 @@ async function getChannel(force = false) {
 }
 
 async function saveChannelChanges(update: ChannelUpdate) {
-  if (!canUpdateChannelSettings.value) {
+  const changesStableVersion = Object.prototype.hasOwnProperty.call(update, 'version')
+  const canUpdate = changesStableVersion
+    ? canPromoteBundle.value
+    : canUpdateChannelSettings.value
+
+  if (!canUpdate) {
     toast.error(t('no-permission'))
     return false
   }
@@ -417,19 +423,7 @@ async function handleRevert() {
             return
           }
 
-          const { error: updateError } = await supabase
-            .from('channels')
-            .update({ version: revertVersionId })
-            .eq('id', id.value)
-
-          if (updateError) {
-            console.error(updateError)
-            toast.error(t('error-revert-to-builtin'))
-            return
-          }
-
-          await getChannel(true)
-          toast.info(t('cloud-replication-delay'))
+          await saveChannelChange('version', revertVersionId)
         },
       },
     ],
@@ -1130,54 +1124,67 @@ async function copyCurlCommand() {
               />
             </InfoRow>
             <InfoRow :label="t('disableAutoUpdateToMajor')">
-              <details ref="autoUpdateDropdown" class="d-dropdown d-dropdown-end">
-                <summary class="d-btn d-btn-outline d-btn-sm">
-                  <span>{{ getAutoUpdateLabel(channel.disable_auto_update) }}</span>
-                  <IconDown class="w-4 h-4 ml-1 fill-current" />
-                </summary>
-                <ul class="w-48 p-2 bg-white shadow d-dropdown-content dark:bg-base-200 rounded-box z-1">
-                  <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
-                    <a
-                      class="block px-3 py-2 text-gray-900 dark:text-white"
-                      @click="onSelectAutoUpdate('major')"
-                    >
-                      {{ t('major') }}
-                    </a>
-                  </li>
-                  <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
-                    <a
-                      class="block px-3 py-2 text-gray-900 dark:text-white"
-                      @click="onSelectAutoUpdate('minor')"
-                    >
-                      {{ t('minor') }}
-                    </a>
-                  </li>
-                  <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
-                    <a
-                      class="block px-3 py-2 text-gray-900 dark:text-white"
-                      @click="onSelectAutoUpdate('patch')"
-                    >
-                      {{ t('patch') }}
-                    </a>
-                  </li>
-                  <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
-                    <a
-                      class="block px-3 py-2 text-gray-900 dark:text-white"
-                      @click="onSelectAutoUpdate('version_number')"
-                    >
-                      {{ t('metadata') }}
-                    </a>
-                  </li>
-                  <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
-                    <a
-                      class="block px-3 py-2 text-gray-900 dark:text-white"
-                      @click="onSelectAutoUpdate('none')"
-                    >
-                      {{ t('none') }}
-                    </a>
-                  </li>
-                </ul>
-              </details>
+              <div class="flex flex-col items-end gap-2">
+                <details ref="autoUpdateDropdown" class="d-dropdown d-dropdown-end">
+                  <summary class="d-btn d-btn-outline d-btn-sm">
+                    <span>{{ getAutoUpdateLabel(channel.disable_auto_update) }}</span>
+                    <IconDown class="w-4 h-4 ml-1 fill-current" />
+                  </summary>
+                  <ul class="w-48 p-2 bg-white shadow d-dropdown-content dark:bg-base-200 rounded-box z-1">
+                    <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
+                      <a
+                        class="block px-3 py-2 text-gray-900 dark:text-white"
+                        @click="onSelectAutoUpdate('major')"
+                      >
+                        {{ t('major') }}
+                      </a>
+                    </li>
+                    <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
+                      <a
+                        class="block px-3 py-2 text-gray-900 dark:text-white"
+                        @click="onSelectAutoUpdate('minor')"
+                      >
+                        {{ t('minor') }}
+                      </a>
+                    </li>
+                    <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
+                      <a
+                        class="block px-3 py-2 text-gray-900 dark:text-white"
+                        @click="onSelectAutoUpdate('patch')"
+                      >
+                        {{ t('patch') }}
+                      </a>
+                    </li>
+                    <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
+                      <a
+                        class="block px-3 py-2 text-gray-900 dark:text-white"
+                        @click="onSelectAutoUpdate('version_number')"
+                      >
+                        {{ t('metadata') }}
+                      </a>
+                    </li>
+                    <li class="block px-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
+                      <a
+                        class="block px-3 py-2 text-gray-900 dark:text-white"
+                        @click="onSelectAutoUpdate('none')"
+                      >
+                        {{ t('none') }}
+                      </a>
+                    </li>
+                  </ul>
+                </details>
+                <a
+                  href="https://capgo.app/semver_tester/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 transition-colors dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300"
+                  :aria-label="t('version-rules-tester-description')"
+                  :title="t('version-rules-tester-description')"
+                >
+                  {{ t('version-rules-tester') }}
+                  <IconExternalLink class="w-3.5 h-3.5" />
+                </a>
+              </div>
             </InfoRow>
             <InfoRow :label="t('allow-dev-build')">
               <Toggle
