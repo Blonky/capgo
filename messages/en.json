@@ -1907,6 +1907,7 @@
   "translation-unavailable": "This language is not available right now.",
   "progressive-rollout": "Progressive rollout",
   "set-rollout-target": "Set target",
+  "rollout-target": "Target",
   "rollout-percentage": "Rollout percentage",
   "rollout-target-linked": "Rollout target linked",
   "invalid-rollout-percentage": "Rollout percentage must be between 0 and 100",
