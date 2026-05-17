@@ -104,6 +104,7 @@ const rolloutProgressStyle = computed(() => {
   return `width: ${percentage}%`
 })
 const showRolloutSettings = computed(() => !!channel.value?.rollout_enabled)
+const showRolloutEnableRow = computed(() => !!channel.value && !channel.value.rollout_enabled)
 
 const canUpdateChannelSettings = computedAsync(async () => {
   if (!packageId.value)
@@ -483,6 +484,16 @@ async function openSelectRolloutVersion() {
   await openSelectVersion()
 }
 
+async function enableRollout() {
+  if (!channel.value)
+    return
+  if (!channel.value.rollout_version) {
+    await openSelectRolloutVersion()
+    return
+  }
+  await saveChannelChange('rollout_enabled', true as any)
+}
+
 async function saveRolloutPercentage(value: string) {
   const percentage = Number.parseFloat(value)
   if (Number.isNaN(percentage) || percentage < 0 || percentage > 100) {
@@ -857,6 +868,19 @@ async function copyCurlCommand() {
             <InfoRow v-if="channel.version.comment" :label="t('bundle-comment')">
               {{ channel.version.comment }}
             </InfoRow>
+            <div v-if="showRolloutEnableRow" class="border-t border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-6">
+              <div class="flex min-h-11 items-center justify-between gap-3">
+                <div class="flex min-w-0 flex-wrap items-center gap-3">
+                  <span class="text-sm font-medium text-slate-900 dark:text-white">{{ t('progressive-rollout') }}</span>
+                  <span class="inline-flex min-h-8 items-center rounded-md border px-2.5 text-xs font-semibold" :class="rolloutStatusClass">
+                    {{ rolloutStatusLabel }}
+                  </span>
+                </div>
+                <button class="min-h-10 shrink-0 d-btn d-btn-sm d-btn-outline" :disabled="rolloutControlsDisabled" @click="enableRollout()">
+                  {{ t('enable') }}
+                </button>
+              </div>
+            </div>
             <div v-if="showRolloutSettings" class="px-4 py-5 sm:px-6">
               <section class="space-y-6" aria-labelledby="rollout-settings-title">
                 <div class="space-y-4">
