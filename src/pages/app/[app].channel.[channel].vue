@@ -874,7 +874,7 @@ async function copyCurlCommand() {
                     </span>
                   </div>
 
-                  <dl class="grid border-y border-slate-200 text-sm dark:border-slate-700 sm:grid-cols-3 sm:divide-x sm:divide-slate-200 sm:dark:divide-slate-700">
+                  <dl class="grid border-y border-slate-200 text-sm dark:border-slate-700 sm:grid-cols-2 sm:divide-x sm:divide-slate-200 sm:dark:divide-slate-700">
                     <div class="py-3 sm:px-4 sm:first:pl-0">
                       <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">
                         {{ t('rollout-target') }}
@@ -889,14 +889,6 @@ async function copyCurlCommand() {
                       </dt>
                       <dd class="mt-1 font-semibold text-slate-900 dark:text-white">
                         {{ rolloutPercentageText }}
-                      </dd>
-                    </div>
-                    <div class="border-t border-slate-200 py-3 dark:border-slate-700 sm:border-t-0 sm:px-4 sm:last:pr-0">
-                      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        {{ t('cache-ttl-seconds') }}
-                      </dt>
-                      <dd class="mt-1 font-semibold text-slate-900 dark:text-white">
-                        {{ channel.rollout_cache_ttl_seconds }}
                       </dd>
                     </div>
                   </dl>
@@ -943,7 +935,7 @@ async function copyCurlCommand() {
                     </div>
 
                     <div class="flex flex-wrap gap-2 lg:justify-end">
-                      <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutControlsDisabled" @click="openSelectRolloutVersion()">
+                      <button class="min-h-11 d-btn d-btn-ghost" :disabled="rolloutControlsDisabled" @click="openSelectRolloutVersion()">
                         {{ t('set-rollout-target') }}
                       </button>
                       <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutActionsDisabled" @click="saveChannelChange('rollout_enabled', !channel.rollout_enabled as any)">
@@ -952,10 +944,10 @@ async function copyCurlCommand() {
                       <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutPauseDisabled" @click="toggleRolloutPause()">
                         {{ channel.rollout_paused_at ? t('resume') : t('pause') }}
                       </button>
-                      <button class="min-h-11 d-btn d-btn-outline" :disabled="rolloutActionsDisabled" @click="promoteRollout()">
+                      <button class="min-h-11 d-btn d-btn-primary" :disabled="rolloutActionsDisabled" @click="promoteRollout()">
                         {{ t('promote') }}
                       </button>
-                      <button class="min-h-11 capitalize d-btn d-btn-error d-btn-outline" :disabled="rolloutActionsDisabled" @click="rollbackRollout()">
+                      <button class="min-h-11 capitalize d-btn d-btn-error d-btn-ghost" :disabled="rolloutActionsDisabled" @click="rollbackRollout()">
                         {{ t('rollback') }}
                       </button>
                     </div>
@@ -979,7 +971,7 @@ async function copyCurlCommand() {
                     </label>
                   </div>
 
-                  <div class="grid w-full gap-3 text-left sm:grid-cols-2 xl:grid-cols-4">
+                  <div v-if="channel.auto_pause_enabled" class="grid w-full gap-3 text-left sm:grid-cols-2 xl:grid-cols-4">
                     <label class="space-y-1.5">
                       <span class="block text-xs font-medium text-slate-500 dark:text-slate-400">{{ t('failure-rate-bps') }}</span>
                       <input
