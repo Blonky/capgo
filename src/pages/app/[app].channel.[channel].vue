@@ -103,7 +103,7 @@ const rolloutProgressStyle = computed(() => {
   const percentage = Math.max(0, Math.min(100, rolloutPercentage.value))
   return `width: ${percentage}%`
 })
-const showRolloutSettings = computed(() => !!channel.value?.rollout_enabled || !!channel.value?.rollout_paused_at)
+const showRolloutSettings = computed(() => !!channel.value?.rollout_enabled)
 
 const canUpdateChannelSettings = computedAsync(async () => {
   if (!packageId.value)
