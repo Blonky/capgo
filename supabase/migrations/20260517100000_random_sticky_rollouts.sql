@@ -300,27 +300,42 @@ AS $$
 DECLARE
   deleted_count bigint;
 BEGIN
-    DELETE FROM public.app_versions AS av
-    WHERE av.deleted_at IS NOT NULL
-      AND av.deleted_at < NOW() - INTERVAL '3 months'
-      AND av.name NOT IN ('builtin', 'unknown')
-      AND NOT EXISTS (
+  DELETE FROM public.app_versions AS av
+  WHERE av.deleted = true
+    AND av.deleted_at IS NOT NULL
+    AND av.deleted_at <= pg_catalog.now() - INTERVAL '90 days'
+    AND av.name NOT IN ('builtin', 'unknown')
+    AND av.manifest_count = 0
+    AND (
+      av.r2_path IS NULL
+      OR EXISTS (
         SELECT 1
-        FROM public.channels AS c
-        WHERE c.app_id = av.app_id
-          AND (c.version = av.id OR c.rollout_version = av.id)
-      );
+        FROM public.app_versions_meta AS avm
+        WHERE avm.id = av.id
+          AND avm.size = 0
+      )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.channels AS c
+      WHERE c.app_id = av.app_id
+        AND (c.version = av.id OR c.rollout_version = av.id)
+    );
 
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
 
-    IF deleted_count > 0 THEN
-      RAISE NOTICE 'delete_old_deleted_versions: permanently deleted % app versions', deleted_count;
-    END IF;
+  IF deleted_count > 0 THEN
+    RAISE NOTICE 'delete_old_deleted_versions: permanently deleted % app versions', deleted_count;
+  END IF;
 END;
 $$;
 
 ALTER FUNCTION public.delete_old_deleted_versions() OWNER TO postgres;
-REVOKE EXECUTE ON FUNCTION public.delete_old_deleted_versions() FROM public;
+COMMENT ON FUNCTION public.delete_old_deleted_versions() IS
+  'Permanently deletes app_versions that have been soft-deleted for at least 90 days after storage cleanup is reflected in app_versions_meta and app_versions.manifest_count.';
+REVOKE ALL ON FUNCTION public.delete_old_deleted_versions() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.delete_old_deleted_versions() FROM anon;
+REVOKE ALL ON FUNCTION public.delete_old_deleted_versions() FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_old_deleted_versions() TO service_role;
 
 SELECT pgmq.create('cron_rollout_auto_pause');
