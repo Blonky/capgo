@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -1295,12 +1295,14 @@ export type Database = {
         Row: {
           apps: number
           apps_active: number | null
+          average_ltv: number
           build_avg_seconds_day_android: number
           build_avg_seconds_day_ios: number
           build_count_day_android: number
           build_count_day_ios: number
           build_total_seconds_day_android: number
           build_total_seconds_day_ios: number
+          builder_active_paying_clients_60d: number
           builds_android: number | null
           builds_ios: number | null
           builds_last_month: number | null
@@ -1325,6 +1327,8 @@ export type Database = {
           devices_last_month: number | null
           devices_last_month_android: number | null
           devices_last_month_ios: number | null
+          live_updates_active_paying_clients_60d: number
+          longest_ltv: number
           mrr: number
           need_upgrade: number | null
           new_paying_orgs: number
@@ -1336,17 +1340,22 @@ export type Database = {
           paying_monthly: number | null
           paying_yearly: number | null
           plan_enterprise: number | null
+          plan_enterprise_conversion_rate: number
           plan_enterprise_monthly: number
           plan_enterprise_yearly: number
           plan_maker: number | null
+          plan_maker_conversion_rate: number
           plan_maker_monthly: number
           plan_maker_yearly: number
           plan_solo: number | null
+          plan_solo_conversion_rate: number
           plan_solo_monthly: number
           plan_solo_yearly: number
           plan_team: number | null
+          plan_team_conversion_rate: number
           plan_team_monthly: number
           plan_team_yearly: number
+          plan_total_conversion_rate: number
           plugin_major_breakdown: Json
           plugin_version_breakdown: Json
           plugin_version_ladder: Json
@@ -1355,6 +1364,7 @@ export type Database = {
           revenue_maker: number
           revenue_solo: number
           revenue_team: number
+          shortest_ltv: number
           stars: number
           success_rate: number | null
           total_revenue: number
@@ -1369,12 +1379,14 @@ export type Database = {
         Insert: {
           apps: number
           apps_active?: number | null
+          average_ltv?: number
           build_avg_seconds_day_android?: number
           build_avg_seconds_day_ios?: number
           build_count_day_android?: number
           build_count_day_ios?: number
           build_total_seconds_day_android?: number
           build_total_seconds_day_ios?: number
+          builder_active_paying_clients_60d?: number
           builds_android?: number | null
           builds_ios?: number | null
           builds_last_month?: number | null
@@ -1399,6 +1411,8 @@ export type Database = {
           devices_last_month?: number | null
           devices_last_month_android?: number | null
           devices_last_month_ios?: number | null
+          live_updates_active_paying_clients_60d?: number
+          longest_ltv?: number
           mrr?: number
           need_upgrade?: number | null
           new_paying_orgs?: number
@@ -1410,17 +1424,22 @@ export type Database = {
           paying_monthly?: number | null
           paying_yearly?: number | null
           plan_enterprise?: number | null
+          plan_enterprise_conversion_rate?: number
           plan_enterprise_monthly?: number
           plan_enterprise_yearly?: number
           plan_maker?: number | null
+          plan_maker_conversion_rate?: number
           plan_maker_monthly?: number
           plan_maker_yearly?: number
           plan_solo?: number | null
+          plan_solo_conversion_rate?: number
           plan_solo_monthly?: number
           plan_solo_yearly?: number
           plan_team?: number | null
+          plan_team_conversion_rate?: number
           plan_team_monthly?: number
           plan_team_yearly?: number
+          plan_total_conversion_rate?: number
           plugin_major_breakdown?: Json
           plugin_version_breakdown?: Json
           plugin_version_ladder?: Json
@@ -1429,6 +1448,7 @@ export type Database = {
           revenue_maker?: number
           revenue_solo?: number
           revenue_team?: number
+          shortest_ltv?: number
           stars: number
           success_rate?: number | null
           total_revenue?: number
@@ -1443,12 +1463,14 @@ export type Database = {
         Update: {
           apps?: number
           apps_active?: number | null
+          average_ltv?: number
           build_avg_seconds_day_android?: number
           build_avg_seconds_day_ios?: number
           build_count_day_android?: number
           build_count_day_ios?: number
           build_total_seconds_day_android?: number
           build_total_seconds_day_ios?: number
+          builder_active_paying_clients_60d?: number
           builds_android?: number | null
           builds_ios?: number | null
           builds_last_month?: number | null
@@ -1473,6 +1495,8 @@ export type Database = {
           devices_last_month?: number | null
           devices_last_month_android?: number | null
           devices_last_month_ios?: number | null
+          live_updates_active_paying_clients_60d?: number
+          longest_ltv?: number
           mrr?: number
           need_upgrade?: number | null
           new_paying_orgs?: number
@@ -1484,17 +1508,22 @@ export type Database = {
           paying_monthly?: number | null
           paying_yearly?: number | null
           plan_enterprise?: number | null
+          plan_enterprise_conversion_rate?: number
           plan_enterprise_monthly?: number
           plan_enterprise_yearly?: number
           plan_maker?: number | null
+          plan_maker_conversion_rate?: number
           plan_maker_monthly?: number
           plan_maker_yearly?: number
           plan_solo?: number | null
+          plan_solo_conversion_rate?: number
           plan_solo_monthly?: number
           plan_solo_yearly?: number
           plan_team?: number | null
+          plan_team_conversion_rate?: number
           plan_team_monthly?: number
           plan_team_yearly?: number
+          plan_total_conversion_rate?: number
           plugin_major_breakdown?: Json
           plugin_version_breakdown?: Json
           plugin_version_ladder?: Json
@@ -1503,6 +1532,7 @@ export type Database = {
           revenue_maker?: number
           revenue_solo?: number
           revenue_team?: number
+          shortest_ltv?: number
           stars?: number
           success_rate?: number | null
           total_revenue?: number
@@ -1917,6 +1947,7 @@ export type Database = {
           market_desc: string | null
           mau: number
           name: string
+          native_build_concurrency: number
           price_m: number
           price_m_id: string
           price_y: number
@@ -1935,6 +1966,7 @@ export type Database = {
           market_desc?: string | null
           mau?: number
           name?: string
+          native_build_concurrency?: number
           price_m?: number
           price_m_id: string
           price_y?: number
@@ -1953,6 +1985,7 @@ export type Database = {
           market_desc?: string | null
           mau?: number
           name?: string
+          native_build_concurrency?: number
           price_m?: number
           price_m_id?: string
           price_y?: number
@@ -3304,6 +3337,8 @@ export type Database = {
           allow_preview: boolean
           android_store_url: string | null
           app_id: string
+          build_timeout_seconds: number
+          build_timeout_updated_at: string
           channel_device_count: number
           created_at: string | null
           default_upload_channel: string
@@ -3412,6 +3447,7 @@ export type Database = {
           bandwidth: number
           build_time_unit: number
           mau: number
+          native_build_concurrency: number
           storage: number
         }[]
       }

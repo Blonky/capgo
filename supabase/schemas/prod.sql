@@ -2053,8 +2053,12 @@ BEGIN
     LIMIT 1;
   END IF;
 
-  -- Enforce 2FA if the org requires it.
-  IF v_effective_org_id IS NOT NULL THEN
+  SELECT public.get_apikey_header() INTO v_apikey;
+
+  -- RBAC-managed API keys have apikeys.mode = NULL, so get_identity_org_appid()
+  -- returns NULL and rbac_check_permission_direct() must resolve the key before
+  -- org identity gates can be evaluated.
+  IF v_effective_org_id IS NOT NULL AND NOT (v_apikey IS NOT NULL AND user_id IS NULL) THEN
     SELECT enforcing_2fa INTO v_org_enforcing_2fa
     FROM public.orgs
     WHERE id = v_effective_org_id;
@@ -2069,10 +2073,7 @@ BEGIN
       ));
       RETURN false;
     END IF;
-  END IF;
 
-  -- Enforce password policy if enabled for the org.
-  IF v_effective_org_id IS NOT NULL THEN
     v_password_policy_ok := public.user_meets_password_policy(user_id, v_effective_org_id);
     IF v_password_policy_ok = false THEN
       PERFORM public.pg_log('deny: CHECK_MIN_RIGHTS_PASSWORD_POLICY_ENFORCEMENT', jsonb_build_object(
@@ -2100,7 +2101,6 @@ BEGIN
   END IF;
 
   v_perm := public.rbac_permission_for_legacy(min_right, v_scope);
-  SELECT public.get_apikey_header() INTO v_apikey;
 
   -- Keep RLS authorization semantics aligned with explicit RBAC checks. In
   -- particular, an API key with direct role bindings must be evaluated as the
@@ -2584,7 +2584,7 @@ CREATE OR REPLACE FUNCTION "public"."cleanup_old_audit_logs"() RETURNS "void"
     AS $$
 BEGIN
   DELETE FROM "public"."audit_logs"
-  WHERE created_at < NOW() - INTERVAL '90 days';
+  WHERE created_at < pg_catalog.now() - INTERVAL '90 days';
 END;
 $$;
 
@@ -3517,30 +3517,41 @@ CREATE OR REPLACE FUNCTION "public"."delete_old_deleted_versions"() RETURNS "voi
 DECLARE
   deleted_count bigint;
 BEGIN
-    -- Delete versions that are:
-    -- 1. Have deleted_at set (soft deleted)
-    -- 2. Soft-deleted more than 1 year ago
-    -- 3. NOT builtin or unknown (these are special placeholder versions)
-    -- 4. NOT currently linked to any channel (safety check)
-    DELETE FROM "public"."app_versions"
-    WHERE deleted_at IS NOT NULL
-      AND deleted_at < NOW() - INTERVAL '3 months'
-      AND name NOT IN ('builtin', 'unknown')
-      AND NOT EXISTS (
-        SELECT 1 FROM "public"."channels"
-        WHERE channels.version = app_versions.id
-      );
+  DELETE FROM "public"."app_versions"
+  WHERE "app_versions"."deleted" = true
+    AND "app_versions"."deleted_at" IS NOT NULL
+    AND "app_versions"."deleted_at" <= pg_catalog.now() - INTERVAL '90 days'
+    AND "app_versions"."name" NOT IN ('builtin', 'unknown')
+    AND "app_versions"."manifest_count" = 0
+    AND (
+      "app_versions"."r2_path" IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM "public"."app_versions_meta"
+        WHERE "app_versions_meta"."id" = "app_versions"."id"
+          AND "app_versions_meta"."size" = 0
+      )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "public"."channels"
+      WHERE "channels"."version" = "app_versions"."id"
+    );
 
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
 
-    IF deleted_count > 0 THEN
-      RAISE NOTICE 'delete_old_deleted_versions: permanently deleted % app versions', deleted_count;
-    END IF;
+  IF deleted_count > 0 THEN
+    RAISE NOTICE 'delete_old_deleted_versions: permanently deleted % app versions', deleted_count;
+  END IF;
 END;
 $$;
 
 
 ALTER FUNCTION "public"."delete_old_deleted_versions"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."delete_old_deleted_versions"() IS 'Permanently deletes app_versions that have been soft-deleted for at least 90 days after storage cleanup is reflected in app_versions_meta and app_versions.manifest_count.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."delete_org_member_role"("p_org_id" "uuid", "p_user_id" "uuid") RETURNS "text"
@@ -4424,7 +4435,10 @@ CREATE TABLE IF NOT EXISTS "public"."apps" (
     "ios_store_url" "text",
     "android_store_url" "text",
     "stats_updated_at" timestamp without time zone,
-    "stats_refresh_requested_at" timestamp without time zone
+    "stats_refresh_requested_at" timestamp without time zone,
+    "build_timeout_seconds" bigint DEFAULT 900 NOT NULL,
+    "build_timeout_updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "apps_build_timeout_seconds_check" CHECK ((("build_timeout_seconds" >= 300) AND ("build_timeout_seconds" <= 21600)))
 );
 
 ALTER TABLE ONLY "public"."apps" REPLICA IDENTITY FULL;
@@ -4462,6 +4476,14 @@ COMMENT ON COLUMN "public"."apps"."ios_store_url" IS 'Optional App Store URL col
 
 
 COMMENT ON COLUMN "public"."apps"."android_store_url" IS 'Optional Google Play URL collected during onboarding to prefill metadata for existing apps.';
+
+
+
+COMMENT ON COLUMN "public"."apps"."build_timeout_seconds" IS 'Maximum native cloud build runtime in seconds before the job is cancelled and billable time is capped.';
+
+
+
+COMMENT ON COLUMN "public"."apps"."build_timeout_updated_at" IS 'Timestamp when the native cloud build timeout setting last changed.';
 
 
 
@@ -4974,7 +4996,7 @@ $$;
 ALTER FUNCTION "public"."get_app_versions"("appid" character varying, "name_version" character varying, "apikey" "text") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."get_current_plan_max_org"("orgid" "uuid") RETURNS TABLE("mau" bigint, "bandwidth" bigint, "storage" bigint, "build_time_unit" bigint)
+CREATE OR REPLACE FUNCTION "public"."get_current_plan_max_org"("orgid" "uuid") RETURNS TABLE("mau" bigint, "bandwidth" bigint, "storage" bigint, "build_time_unit" bigint, "native_build_concurrency" integer)
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
@@ -5008,7 +5030,12 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT p.mau, p.bandwidth, p.storage, p.build_time_unit
+  SELECT
+    p.mau,
+    p.bandwidth,
+    p.storage,
+    p.build_time_unit,
+    p.native_build_concurrency
   FROM public.orgs o
   JOIN public.stripe_info si ON o.customer_id = si.customer_id
   JOIN public.plans p ON si.product_id = p.stripe_id
@@ -6306,18 +6333,69 @@ CREATE OR REPLACE FUNCTION "public"."get_organization_cli_warnings"("orgid" "uui
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
-DECLARE messages jsonb[] := ARRAY[]::jsonb[]; has_read_access boolean;
+DECLARE
+    messages jsonb[] := ARRAY[]::jsonb[];
+    request_apikey text;
+    api_key public.apikeys%ROWTYPE;
+    fallback_app_id text;
+    has_org_read boolean;
 BEGIN
-  PERFORM cli_version;
-  SELECT public.check_min_rights('read'::public.user_min_right, public.get_identity_apikey_only('{write,all,upload,read}'::public.key_mode[]), orgid, NULL::varchar, NULL::bigint) INTO has_read_access;
-  IF NOT has_read_access THEN
-    messages := array_append(messages, jsonb_build_object('message','API key does not have read access to this organization','fatal',true));
+    PERFORM cli_version;
+
+    has_org_read := public.cli_check_permission(
+        permission_key := public.rbac_perm_org_read(),
+        org_id := orgid
+    );
+
+    IF NOT has_org_read THEN
+        SELECT public.get_apikey_header() INTO request_apikey;
+
+        IF request_apikey IS NOT NULL AND request_apikey <> '' THEN
+            SELECT * INTO api_key
+            FROM public.find_apikey_by_value(request_apikey)
+            LIMIT 1;
+
+            IF api_key.id IS NOT NULL
+                AND COALESCE(array_length(api_key.limited_to_apps, 1), 0) > 0
+            THEN
+                SELECT public.apps.app_id INTO fallback_app_id
+                FROM public.apps
+                WHERE public.apps.owner_org = orgid
+                    AND public.apps.app_id = ANY(api_key.limited_to_apps)
+                ORDER BY public.apps.app_id
+                LIMIT 1;
+
+                IF fallback_app_id IS NOT NULL THEN
+                    has_org_read := public.cli_check_permission(
+                        permission_key := public.rbac_perm_org_read(),
+                        org_id := orgid,
+                        app_id := fallback_app_id
+                    );
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    IF NOT has_org_read THEN
+        messages := array_append(messages, jsonb_build_object(
+            'message', 'API key does not have read access to this organization',
+            'fatal', true
+        ));
+        RETURN messages;
+    END IF;
+
+    IF (
+        public.is_paying_and_good_plan_org_action(orgid, ARRAY['mau']::public.action_type[]) = true
+        AND public.is_paying_and_good_plan_org_action(orgid, ARRAY['bandwidth']::public.action_type[]) = true
+        AND public.is_paying_and_good_plan_org_action(orgid, ARRAY['storage']::public.action_type[]) = false
+    ) THEN
+        messages := array_append(messages, jsonb_build_object(
+            'message', 'You have exceeded your storage limit.\nUpload will fail, but you can still download your data.\nMAU and bandwidth limits are not exceeded.\nIn order to upload your plan, please upgrade your plan here: https://console.capgo.app/settings/plans.',
+            'fatal', true
+        ));
+    END IF;
+
     RETURN messages;
-  END IF;
-  IF (public.is_paying_and_good_plan_org_action(orgid, ARRAY['mau']::public.action_type[]) = true AND public.is_paying_and_good_plan_org_action(orgid, ARRAY['bandwidth']::public.action_type[]) = true AND public.is_paying_and_good_plan_org_action(orgid, ARRAY['storage']::public.action_type[]) = false) THEN
-    messages := array_append(messages, jsonb_build_object('message','You have exceeded your storage limit.\nUpload will fail, but you can still download your data.\nMAU and bandwidth limits are not exceeded.\nIn order to upload your plan, please upgrade your plan here: https://console.capgo.app/settings/plans.','fatal',true));
-  END IF;
-  RETURN messages;
 END;
 $$;
 
@@ -7704,7 +7782,8 @@ CREATE TABLE IF NOT EXISTS "public"."app_versions" (
     "key_id" character varying(20),
     "cli_version" character varying,
     "deleted_at" timestamp with time zone
-);
+)
+WITH ("autovacuum_vacuum_scale_factor"='0.05', "autovacuum_analyze_scale_factor"='0.02');
 
 ALTER TABLE ONLY "public"."app_versions" REPLICA IDENTITY FULL;
 
@@ -14738,6 +14817,27 @@ $$;
 ALTER FUNCTION "public"."update_app_versions_retention"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_apps_build_timeout_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW."build_timeout_updated_at" := COALESCE(NEW."build_timeout_updated_at", now());
+  ELSIF NEW."build_timeout_seconds" IS DISTINCT FROM OLD."build_timeout_seconds" THEN
+    NEW."build_timeout_updated_at" := now();
+  ELSE
+    NEW."build_timeout_updated_at" := OLD."build_timeout_updated_at";
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_apps_build_timeout_updated_at"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_org_invite_role_rbac"("p_org_id" "uuid", "p_user_id" "uuid", "p_new_role_name" "text") RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -15609,11 +15709,16 @@ CREATE TABLE IF NOT EXISTS "public"."build_requests" (
     "upload_url" character varying NOT NULL,
     "upload_expires_at" timestamp with time zone NOT NULL,
     "last_error" "text",
-    CONSTRAINT "build_requests_platform_check" CHECK ((("platform")::"text" = ANY ((ARRAY['ios'::character varying, 'android'::character varying])::"text"[])))
+    "runner_wait_seconds" bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT "build_requests_platform_check" CHECK ((("platform")::"text" = ANY (ARRAY[('ios'::character varying)::"text", ('android'::character varying)::"text"])))
 );
 
 
 ALTER TABLE "public"."build_requests" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."build_requests"."runner_wait_seconds" IS 'Self-hosted runner wait time reported by builder, in seconds. Informational only; not used for billing.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."capgo_credits_steps" (
@@ -15836,7 +15941,8 @@ CREATE TABLE IF NOT EXISTS "public"."daily_bandwidth" (
     "app_id" character varying(255) NOT NULL,
     "date" "date" NOT NULL,
     "bandwidth" bigint NOT NULL
-);
+)
+WITH ("autovacuum_vacuum_scale_factor"='0.05', "autovacuum_analyze_scale_factor"='0.02');
 
 
 ALTER TABLE "public"."daily_bandwidth" OWNER TO "postgres";
@@ -15876,7 +15982,8 @@ CREATE TABLE IF NOT EXISTS "public"."daily_mau" (
     "app_id" character varying(255) NOT NULL,
     "date" "date" NOT NULL,
     "mau" bigint NOT NULL
-);
+)
+WITH ("autovacuum_vacuum_scale_factor"='0.05', "autovacuum_analyze_scale_factor"='0.02');
 
 
 ALTER TABLE "public"."daily_mau" OWNER TO "postgres";
@@ -15983,7 +16090,8 @@ CREATE TABLE IF NOT EXISTS "public"."daily_storage" (
     "app_id" character varying(255) NOT NULL,
     "date" "date" NOT NULL,
     "storage" bigint NOT NULL
-);
+)
+WITH ("autovacuum_vacuum_scale_factor"='0.05', "autovacuum_analyze_scale_factor"='0.02');
 
 
 ALTER TABLE "public"."daily_storage" OWNER TO "postgres";
@@ -16014,7 +16122,8 @@ CREATE TABLE IF NOT EXISTS "public"."daily_version" (
     "install" bigint,
     "uninstall" bigint,
     "version_name" character varying(255) NOT NULL
-);
+)
+WITH ("autovacuum_vacuum_scale_factor"='0.05', "autovacuum_analyze_scale_factor"='0.02');
 
 
 ALTER TABLE "public"."daily_version" OWNER TO "postgres";
@@ -16224,7 +16333,17 @@ CREATE TABLE IF NOT EXISTS "public"."global_stats" (
     "churn_revenue_maker" double precision DEFAULT 0 NOT NULL,
     "churn_revenue_team" double precision DEFAULT 0 NOT NULL,
     "churn_revenue_enterprise" double precision DEFAULT 0 NOT NULL,
-    "plugin_version_ladder" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL
+    "plugin_version_ladder" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "builder_active_paying_clients_60d" integer DEFAULT 0 NOT NULL,
+    "live_updates_active_paying_clients_60d" integer DEFAULT 0 NOT NULL,
+    "plan_solo_conversion_rate" double precision DEFAULT 0 NOT NULL,
+    "plan_maker_conversion_rate" double precision DEFAULT 0 NOT NULL,
+    "plan_team_conversion_rate" double precision DEFAULT 0 NOT NULL,
+    "plan_enterprise_conversion_rate" double precision DEFAULT 0 NOT NULL,
+    "plan_total_conversion_rate" double precision DEFAULT 0 NOT NULL,
+    "average_ltv" double precision DEFAULT 0 NOT NULL,
+    "shortest_ltv" double precision DEFAULT 0 NOT NULL,
+    "longest_ltv" double precision DEFAULT 0 NOT NULL
 );
 
 
@@ -16396,6 +16515,46 @@ COMMENT ON COLUMN "public"."global_stats"."churn_revenue_team" IS 'Team plan MRR
 
 
 COMMENT ON COLUMN "public"."global_stats"."churn_revenue_enterprise" IS 'Enterprise plan MRR lost to churn and downgrades on the day.';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."builder_active_paying_clients_60d" IS 'Number of paying clients with Capgo Builder activity in the trailing 60 days for the UTC day.';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."live_updates_active_paying_clients_60d" IS 'Number of paying clients with Live Updates activity in the trailing 60 days for the UTC day.';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."plan_solo_conversion_rate" IS 'Percentage of organizations converted to the Solo plan (plan_solo / orgs * 100)';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."plan_maker_conversion_rate" IS 'Percentage of organizations converted to the Maker plan (plan_maker / orgs * 100)';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."plan_team_conversion_rate" IS 'Percentage of organizations converted to the Team plan (plan_team / orgs * 100)';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."plan_enterprise_conversion_rate" IS 'Percentage of organizations converted to the Enterprise plan (plan_enterprise / orgs * 100)';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."plan_total_conversion_rate" IS 'Percentage of organizations converted to any paid plan ((plan_solo + plan_maker + plan_team + plan_enterprise) / orgs * 100)';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."average_ltv" IS 'Average estimated customer LTV in dollars for the daily snapshot.';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."shortest_ltv" IS 'Lowest estimated customer LTV in dollars for the daily snapshot.';
+
+
+
+COMMENT ON COLUMN "public"."global_stats"."longest_ltv" IS 'Highest estimated customer LTV in dollars for the daily snapshot.';
 
 
 
@@ -16614,7 +16773,9 @@ CREATE TABLE IF NOT EXISTS "public"."plans" (
     "mau" bigint DEFAULT '0'::bigint NOT NULL,
     "market_desc" character varying DEFAULT ''::character varying,
     "build_time_unit" bigint DEFAULT 0 NOT NULL,
-    "credit_id" "text" NOT NULL
+    "credit_id" "text" NOT NULL,
+    "native_build_concurrency" integer DEFAULT 2 NOT NULL,
+    CONSTRAINT "plans_native_build_concurrency_positive" CHECK (("native_build_concurrency" > 0))
 );
 
 ALTER TABLE ONLY "public"."plans" REPLICA IDENTITY FULL;
@@ -16628,6 +16789,10 @@ COMMENT ON COLUMN "public"."plans"."build_time_unit" IS 'Maximum build time in s
 
 
 COMMENT ON COLUMN "public"."plans"."credit_id" IS 'Stripe product identifier used for purchasing additional credits.';
+
+
+
+COMMENT ON COLUMN "public"."plans"."native_build_concurrency" IS 'Maximum number of active native builds allowed concurrently for this plan.';
 
 
 
@@ -17677,11 +17842,6 @@ ALTER TABLE ONLY "public"."orgs"
 
 
 
-ALTER TABLE ONLY "public"."channel_devices"
-    ADD CONSTRAINT "unique_device_app" UNIQUE ("device_id", "app_id");
-
-
-
 ALTER TABLE ONLY "public"."channels"
     ADD CONSTRAINT "unique_name_app_id" UNIQUE ("name", "app_id");
 
@@ -17760,6 +17920,10 @@ CREATE INDEX "app_versions_cli_version_idx" ON "public"."app_versions" USING "bt
 
 
 CREATE INDEX "app_versions_meta_app_id_idx" ON "public"."app_versions_meta" USING "btree" ("app_id");
+
+
+
+CREATE INDEX "app_versions_r2_path_idx" ON "public"."app_versions" USING "btree" ("r2_path");
 
 
 
@@ -18064,10 +18228,6 @@ CREATE INDEX "idx_id_app_id_app_versions_meta" ON "public"."app_versions_meta" U
 
 
 CREATE INDEX "idx_manifest_app_version_id" ON "public"."manifest" USING "btree" ("app_version_id");
-
-
-
-CREATE INDEX "idx_manifest_file_name_hash_version" ON "public"."manifest" USING "btree" ("file_name", "file_hash", "app_version_id");
 
 
 
@@ -18548,6 +18708,10 @@ COMMENT ON TRIGGER "sync_org_user_to_role_binding_on_insert" ON "public"."org_us
 
 
 CREATE OR REPLACE TRIGGER "trg_sync_org_has_usage_credits" AFTER INSERT OR DELETE OR UPDATE ON "public"."usage_credit_grants" FOR EACH ROW EXECUTE FUNCTION "public"."sync_org_has_usage_credits_from_grants"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_apps_build_timeout_updated_at" BEFORE INSERT OR UPDATE ON "public"."apps" FOR EACH ROW EXECUTE FUNCTION "public"."update_apps_build_timeout_updated_at"();
 
 
 
@@ -19835,6 +19999,12 @@ ALTER TABLE "public"."webhook_deliveries" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."webhooks" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE PUBLICATION "capgo_google_eu_2_pub" WITH (publish = 'insert, update, delete, truncate');
+
+
+ALTER PUBLICATION "capgo_google_eu_2_pub" OWNER TO "postgres";
+
+
 CREATE PUBLICATION "planetscale_replicate" WITH (publish = 'insert, update, delete, truncate');
 
 
@@ -19850,7 +20020,15 @@ ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
 
 
 
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."app_versions";
+
+
+
 ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."app_versions";
+
+
+
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."apps";
 
 
 
@@ -19858,7 +20036,15 @@ ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."apps";
 
 
 
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."channel_devices";
+
+
+
 ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."channel_devices";
+
+
+
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."channels";
 
 
 
@@ -19866,7 +20052,15 @@ ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."channels";
 
 
 
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."manifest";
+
+
+
 ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."manifest";
+
+
+
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."notifications";
 
 
 
@@ -19874,11 +20068,23 @@ ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."notifications
 
 
 
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."org_users";
+
+
+
 ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."org_users";
 
 
 
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."orgs";
+
+
+
 ALTER PUBLICATION "planetscale_replicate" ADD TABLE ONLY "public"."orgs";
+
+
+
+ALTER PUBLICATION "capgo_google_eu_2_pub" ADD TABLE ONLY "public"."stripe_info";
 
 
 
@@ -20384,6 +20590,7 @@ REVOKE ALL ON FUNCTION "public"."cleanup_job_run_details_7days"() FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "public"."cleanup_old_audit_logs"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."cleanup_old_audit_logs"() TO "service_role";
 
 
 
@@ -20682,8 +20889,8 @@ GRANT ALL ON FUNCTION "public"."get_app_versions"("appid" character varying, "na
 
 
 REVOKE ALL ON FUNCTION "public"."get_current_plan_max_org"("orgid" "uuid") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."get_current_plan_max_org"("orgid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_current_plan_max_org"("orgid" "uuid") TO "service_role";
+GRANT ALL ON FUNCTION "public"."get_current_plan_max_org"("orgid" "uuid") TO "authenticated";
 
 
 
@@ -20843,6 +21050,7 @@ GRANT ALL ON FUNCTION "public"."get_org_user_access_rbac"("p_user_id" "uuid", "p
 
 
 
+REVOKE ALL ON FUNCTION "public"."get_organization_cli_warnings"("orgid" "uuid", "cli_version" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_organization_cli_warnings"("orgid" "uuid", "cli_version" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_organization_cli_warnings"("orgid" "uuid", "cli_version" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_organization_cli_warnings"("orgid" "uuid", "cli_version" "text") TO "service_role";
@@ -22195,6 +22403,11 @@ REVOKE ALL ON FUNCTION "public"."trigger_webhook_on_audit_log"() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION "public"."update_app_versions_retention"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_app_versions_retention"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."update_apps_build_timeout_updated_at"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_apps_build_timeout_updated_at"() TO "service_role";
 
 
 
