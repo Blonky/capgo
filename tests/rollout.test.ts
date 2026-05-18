@@ -239,6 +239,21 @@ describe('rollout auto-pause policy', () => {
     expect(coolingDown.reason).toBe('cooldown')
   })
 
+  it.concurrent('does not trigger a zero bps threshold when there are no failures', () => {
+    const result = evaluateAutoPausePolicy({
+      action: 'pause',
+      confidence: 0.95,
+      cooldownMinutes: 0,
+      enabled: true,
+      failureRateBps: 0,
+      failures: 0,
+      installs: 100,
+    })
+
+    expect(result.shouldTrigger).toBe(false)
+    expect(result.reason).toBe('below_threshold')
+  })
+
   it.concurrent('uses confidence lower bound before triggering configured action', () => {
     const result = evaluateAutoPausePolicy({
       action: 'rollback',

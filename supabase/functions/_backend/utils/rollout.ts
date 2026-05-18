@@ -321,6 +321,10 @@ export function evaluateAutoPausePolicy(input: AutoPauseEvaluationInput): AutoPa
     return { ...base, shouldTrigger: false, reason: 'insufficient_failures' }
   }
 
+  if (failures === 0) {
+    return { ...base, shouldTrigger: false, reason: 'below_threshold' }
+  }
+
   if (lowerBoundBps < thresholdBps) {
     return { ...base, shouldTrigger: false, reason: 'below_threshold' }
   }

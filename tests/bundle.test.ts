@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { BASE_URL, createAppVersions, fetchBundle, getSupabaseClient, headers, resetAndSeedAppData, resetAppData, resetAppDataStats, USER_ID } from './test-utils.ts'
+import { BASE_URL, createAppVersions, fetchBundle, getSupabaseClient, headers, ORG_ID, resetAndSeedAppData, resetAppData, resetAppDataStats, USER_ID } from './test-utils.ts'
 
 const id = randomUUID()
 const APPNAME = `com.app.b.${id}`
@@ -179,6 +179,49 @@ describe('[DELETE] /bundle operations', () => {
     const deleteBundleData = await deleteBundle.json() as { status: string }
     expect(deleteBundle.status).toBe(200)
     expect(deleteBundleData.status).toBe('ok')
+  })
+
+  it('does not delete a rollout target bundle linked to a channel', async () => {
+    const supabase = getSupabaseClient()
+    const stableVersion = await createAppVersions(`1.0.0-delete-rollout-stable-${id}`, APPNAME)
+    const rolloutVersion = await createAppVersions(`1.0.0-delete-rollout-target-${id}`, APPNAME)
+    const channelName = `delete-rollout-${id}`
+
+    const { error: channelError } = await supabase
+      .from('channels')
+      .insert({
+        app_id: APPNAME,
+        name: channelName,
+        version: stableVersion.id,
+        rollout_version: rolloutVersion.id,
+        rollout_enabled: true,
+        rollout_percentage_bps: 1000,
+        owner_org: ORG_ID,
+        created_by: USER_ID,
+      })
+
+    expect(channelError).toBeNull()
+
+    const deleteBundle = await fetch(`${BASE_URL}/bundle`, {
+      method: 'DELETE',
+      headers,
+      body: JSON.stringify({
+        app_id: APPNAME,
+        version: rolloutVersion.name,
+      }),
+    })
+    const deleteBundleData = await deleteBundle.json() as { error?: string }
+    expect(deleteBundle.status).toBe(400)
+    expect(deleteBundleData.error).toBe('cannot_delete_linked_version')
+
+    const { data: versionAfterDelete, error: versionError } = await supabase
+      .from('app_versions')
+      .select('deleted')
+      .eq('id', rolloutVersion.id)
+      .single()
+
+    expect(versionError).toBeNull()
+    expect(versionAfterDelete?.deleted).toBe(false)
   })
 
   it('delete all bundles for an app', async () => {

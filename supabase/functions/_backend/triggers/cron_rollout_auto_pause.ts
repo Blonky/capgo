@@ -4,6 +4,7 @@ import { cloudlog, cloudlogErr } from '../utils/logging.ts'
 import { evaluateAutoPausePolicy } from '../utils/rollout.ts'
 import { readStatsVersion } from '../utils/stats.ts'
 import { supabaseAdmin } from '../utils/supabase.ts'
+import { sendEventToTracking } from '../utils/tracking.ts'
 import { version } from '../utils/version.ts'
 
 interface RolloutAutoPauseChannel {
@@ -119,6 +120,21 @@ async function evaluateChannel(c: Parameters<typeof supabaseAdmin>[0], supabase:
   }
   else {
     await updateChannelOrThrow(supabase, channel.id, basePatch)
+    await sendEventToTracking(c, {
+      channel: 'rollout-auto-pause',
+      event: 'Rollout Auto-Pause Notification',
+      icon: '⚠️',
+      user_id: channel.owner_org,
+      groups: { organization: channel.owner_org },
+      tags: {
+        app_id: channel.app_id,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        rollout_version: versionName,
+      },
+      description: reason,
+      notify: true,
+    }, { background: false })
   }
 
   cloudlog({ requestId: c.get('requestId'), message: 'rollout auto-pause triggered', appId: channel.app_id, channelId: channel.id, action: result.action, reason })

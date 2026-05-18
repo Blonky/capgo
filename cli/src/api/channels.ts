@@ -22,7 +22,7 @@ export async function checkVersionNotUsedInChannel(
     .from('channels')
     .select()
     .eq('app_id', appid)
-    .eq('version', versionData.id)
+    .or(`version.eq.${versionData.id},rollout_version.eq.${versionData.id}`)
 
   if (channelName)
     query = query.eq('name', channelName)
@@ -66,14 +66,26 @@ export async function checkVersionNotUsedInChannel(
     const s = silent ? null : spinner()
     s?.start(`Unlinking channel ${channel.name}`)
 
-    const unknownVersion = await findUnknownVersion(supabase, appid, { silent })
-    if (!unknownVersion) {
-      s?.stop(`Cannot find unknown version for ${appid}`)
-      throw new Error(`Cannot find unknown version for ${appid}`)
+    const patch: Database['public']['Tables']['channels']['Update'] = {}
+    if (channel.version === versionData.id) {
+      const unknownVersion = await findUnknownVersion(supabase, appid, { silent })
+      if (!unknownVersion) {
+        s?.stop(`Cannot find unknown version for ${appid}`)
+        throw new Error(`Cannot find unknown version for ${appid}`)
+      }
+      patch.version = unknownVersion.id
     }
+    if (channel.rollout_version === versionData.id) {
+      patch.rollout_version = null
+      patch.rollout_enabled = false
+      patch.rollout_percentage_bps = 0
+      patch.rollout_paused_at = null
+      patch.rollout_pause_reason = null
+    }
+
     const { error: errorChannelUpdate } = await supabase
       .from('channels')
-      .update({ version: unknownVersion.id })
+      .update(patch)
       .eq('id', channel.id)
 
     if (errorChannelUpdate) {

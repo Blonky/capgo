@@ -166,15 +166,11 @@ describe('[POST] /updates', () => {
       })
       .throwOnError()
 
-    const deleteResponse = await fetch(getEndpointUrl('/bundle'), {
-      method: 'DELETE',
-      headers,
-      body: JSON.stringify({
-        app_id: APP_NAME_UPDATE,
-        version: versionName,
-      }),
-    })
-    expect(deleteResponse.status).toBe(200)
+    await supabase
+      .from('app_versions')
+      .update({ deleted: true })
+      .eq('id', version.id)
+      .throwOnError()
 
     const baseData = getBaseData(APP_NAME_UPDATE)
     baseData.defaultChannel = channelName
@@ -232,15 +228,11 @@ describe('[POST] /updates', () => {
       })
       .throwOnError()
 
-    const deleteResponse = await fetch(getEndpointUrl('/bundle'), {
-      method: 'DELETE',
-      headers,
-      body: JSON.stringify({
-        app_id: APP_NAME_UPDATE,
-        version: versionName,
-      }),
-    })
-    expect(deleteResponse.status).toBe(200)
+    await supabase
+      .from('app_versions')
+      .update({ deleted: true })
+      .eq('id', version.id)
+      .throwOnError()
 
     const expectedFallbackData = getBaseData(APP_NAME_UPDATE)
     expectedFallbackData.version_build = '0.0.0'
