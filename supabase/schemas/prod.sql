@@ -4859,6 +4859,8 @@ DECLARE
   caller_id uuid;
   org_exists boolean;
   org_stats_updated_at timestamp without time zone;
+  v_request_apikey text;
+  v_limited_to_apps character varying[];
   v_cache_ttl CONSTANT interval := INTERVAL '5 minutes'; -- NOSONAR: function-local cache TTL
   v_privileged_roles CONSTANT text[] := ARRAY['service_role', 'postgres', 'supabase_admin']; -- NOSONAR: function-local privileged role set
   v_read_key_modes CONSTANT public.key_mode[] := '{read,upload,write,all}'::public.key_mode[]; -- NOSONAR: function-local key mode set
@@ -4885,6 +4887,14 @@ BEGIN
       NULL::bigint
     ) THEN
       RETURN;
+    END IF;
+
+    SELECT public.get_apikey_header() INTO v_request_apikey;
+    IF v_request_apikey IS NOT NULL THEN
+      SELECT ak.limited_to_apps
+      INTO v_limited_to_apps
+      FROM public.find_apikey_by_value(v_request_apikey) ak
+      LIMIT 1;
     END IF;
   END IF;
 
@@ -4953,6 +4963,8 @@ BEGIN
     install bigint,
     uninstall bigint
   )
+  WHERE COALESCE(array_length(v_limited_to_apps, 1), 0) = 0
+    OR metrics.app_id = ANY(v_limited_to_apps)
   ORDER BY metrics.app_id, metrics.date;
 END;
 $$;
@@ -23267,7 +23279,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INS
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "service_role";
-
 
 
 
