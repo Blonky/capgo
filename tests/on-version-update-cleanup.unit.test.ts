@@ -9,6 +9,7 @@ const {
   deleteObject,
   getDrizzleClient,
   getPgClient,
+  moveObjectToTrash,
   supabaseAdmin,
 } = vi.hoisted(() => {
   const appVersionsMetaSelectEq = vi.fn()
@@ -40,6 +41,7 @@ const {
       })),
     })),
     getPgClient: vi.fn(() => ({})),
+    moveObjectToTrash: vi.fn(),
     supabaseAdmin: vi.fn(() => ({ from: supabaseFrom })),
     supabaseFrom,
   }
@@ -49,6 +51,7 @@ vi.mock('../supabase/functions/_backend/utils/s3.ts', () => ({
   getPath: vi.fn(),
   s3: {
     deleteObject,
+    moveObjectToTrash,
   },
 }))
 
@@ -96,6 +99,7 @@ describe('on_version_update deleted version cleanup', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     deleteObject.mockResolvedValue(true)
+    moveObjectToTrash.mockResolvedValue(true)
     createStatsMeta.mockResolvedValue({ error: null })
     appVersionsMetaSelectEq.mockReturnValue({
       single: vi.fn(async () => ({ data: { size: 1234 }, error: null })),
@@ -103,11 +107,12 @@ describe('on_version_update deleted version cleanup', () => {
     appVersionsMetaUpdateEq.mockResolvedValue({ error: null })
   })
 
-  it('deletes the bundle directly and clears stored size for soft-deleted versions', async () => {
+  it('moves the bundle to trash and clears stored size for soft-deleted versions', async () => {
     const response = await deleteIt(createContext(), createVersion())
 
     expect(response.status).toBe(200)
-    expect(deleteObject).toHaveBeenCalledWith(expect.anything(), 'orgs/org-1/apps/com.cleanup.test/1.0.0.zip')
+    expect(moveObjectToTrash).toHaveBeenCalledWith(expect.anything(), 'orgs/org-1/apps/com.cleanup.test/1.0.0.zip')
+    expect(deleteObject).not.toHaveBeenCalled()
     expect(appVersionsMetaUpdate).toHaveBeenCalledWith({ size: 0 })
     expect(appVersionsMetaUpdateEq).toHaveBeenCalledWith('id', 123)
     expect(createStatsMeta).toHaveBeenCalledWith(expect.anything(), 'com.cleanup.test', 123, -1234)
@@ -117,15 +122,15 @@ describe('on_version_update deleted version cleanup', () => {
     const response = await deleteIt(createContext(), createVersion({ r2_path: null }))
 
     expect(response.status).toBe(200)
-    expect(deleteObject).not.toHaveBeenCalled()
+    expect(moveObjectToTrash).not.toHaveBeenCalled()
     expect(appVersionsMetaUpdate).toHaveBeenCalledWith({ size: 0 })
     expect(createStatsMeta).toHaveBeenCalledWith(expect.anything(), 'com.cleanup.test', 123, -1234)
   })
 
-  it('keeps the queue retryable when R2 deletion fails', async () => {
-    deleteObject.mockResolvedValue(false)
+  it('keeps the queue retryable when moving the bundle to trash fails', async () => {
+    moveObjectToTrash.mockResolvedValue(false)
 
-    await expect(deleteIt(createContext(), createVersion())).rejects.toThrow('Cannot delete S3 object for deleted version')
+    await expect(deleteIt(createContext(), createVersion())).rejects.toThrow('Cannot move S3 object for deleted version to trash')
     expect(appVersionsMetaUpdate).not.toHaveBeenCalled()
     expect(createStatsMeta).not.toHaveBeenCalled()
   })

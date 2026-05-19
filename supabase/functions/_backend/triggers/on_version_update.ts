@@ -298,17 +298,17 @@ export async function deleteIt(c: Context, record: Database['public']['Tables'][
   cloudlog({ requestId: c.get('requestId'), message: 'Delete', r2_path: record.r2_path })
 
   if (record.r2_path) {
-    let deleted = false
+    let moved = false
     try {
-      deleted = await s3.deleteObject(c, record.r2_path)
+      moved = await s3.moveObjectToTrash(c, record.r2_path)
     }
     catch (error) {
-      cloudlog({ requestId: c.get('requestId'), message: 'Cannot delete s3 (v2)', error })
-      throw simpleError('cannot_delete_s3', 'Cannot delete S3 object for deleted version', { id: record.id, r2_path: record.r2_path }, error)
+      cloudlog({ requestId: c.get('requestId'), message: 'Cannot move s3 to trash (v2)', error })
+      throw simpleError('cannot_move_s3_to_trash', 'Cannot move S3 object for deleted version to trash', { id: record.id, r2_path: record.r2_path }, error)
     }
 
-    if (!deleted) {
-      throw simpleError('cannot_delete_s3', 'Cannot delete S3 object for deleted version', { id: record.id, r2_path: record.r2_path })
+    if (!moved) {
+      throw simpleError('cannot_move_s3_to_trash', 'Cannot move S3 object for deleted version to trash', { id: record.id, r2_path: record.r2_path })
     }
   }
   else {
