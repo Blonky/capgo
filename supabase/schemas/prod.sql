@@ -1212,6 +1212,7 @@ DECLARE
     public.rbac_scope_org()
   );
   v_enforcing_2fa boolean;
+  v_limited_app_orgs uuid[] := '{}'::uuid[];
 BEGIN
   SELECT auth.uid() INTO v_user_id;
 
@@ -1233,6 +1234,13 @@ BEGIN
 
     IF public.is_apikey_expired(v_api_key.expires_at) THEN
       RETURN v_allowed;
+    END IF;
+
+    IF COALESCE(array_length(v_api_key.limited_to_apps, 1), 0) > 0 THEN
+      SELECT COALESCE(ARRAY_AGG(DISTINCT a.owner_org), '{}'::uuid[])
+      INTO v_limited_app_orgs
+      FROM public.apps a
+      WHERE a.app_id = ANY(v_api_key.limited_to_apps);
     END IF;
 
     v_user_id := v_api_key.user_id;
@@ -1269,6 +1277,12 @@ BEGIN
     IF v_api_key.id IS NOT NULL
       AND COALESCE(array_length(v_api_key.limited_to_orgs, 1), 0) > 0
       AND NOT (v_org_id = ANY(v_api_key.limited_to_orgs))
+    THEN
+      CONTINUE;
+    END IF;
+    IF v_api_key.id IS NOT NULL
+      AND COALESCE(array_length(v_api_key.limited_to_apps, 1), 0) > 0
+      AND NOT (v_org_id = ANY(v_limited_app_orgs))
     THEN
       CONTINUE;
     END IF;
@@ -6524,6 +6538,7 @@ DECLARE
   api_key_text text;
   api_key record;
   user_id uuid;
+  allowed_orgs uuid[] := '{}'::uuid[];
 BEGIN
   SELECT "public"."get_apikey_header"() into api_key_text;
   user_id := NULL;
@@ -6638,6 +6653,22 @@ BEGIN
       SELECT orgs.*
       FROM public.get_orgs_v7(user_id) AS orgs
       WHERE orgs.gid = ANY(api_key.limited_to_orgs::uuid[]);
+      RETURN;
+    ELSIF COALESCE(array_length(api_key.limited_to_apps, 1), 0) > 0 THEN
+      SELECT COALESCE(ARRAY(
+        SELECT DISTINCT a.owner_org
+        FROM public.apps a
+        WHERE a.app_id = ANY(api_key.limited_to_apps)
+      ), '{}'::uuid[]) INTO allowed_orgs;
+
+      IF COALESCE(array_length(allowed_orgs, 1), 0) = 0 THEN
+        RETURN;
+      END IF;
+
+      RETURN QUERY
+      SELECT orgs.*
+      FROM public.get_orgs_v7(user_id) AS orgs
+      WHERE orgs.gid = ANY(allowed_orgs);
       RETURN;
     END IF;
   END IF;
@@ -7758,6 +7789,8 @@ DECLARE
   v_user_id uuid;
   limited_orgs uuid[];
   has_limited_orgs boolean := false;
+  limited_app_orgs uuid[] := '{}'::uuid[];
+  has_limited_app_orgs boolean := false;
 BEGIN
   SELECT "public"."get_apikey_header"() INTO api_key_text;
   v_user_id := NULL;
@@ -7779,6 +7812,14 @@ BEGIN
     v_user_id := api_key.user_id;
     limited_orgs := api_key.limited_to_orgs;
     has_limited_orgs := COALESCE(array_length(limited_orgs, 1), 0) > 0;
+
+    has_limited_app_orgs := COALESCE(array_length(api_key.limited_to_apps, 1), 0) > 0;
+    IF has_limited_app_orgs THEN
+      SELECT COALESCE(ARRAY_AGG(DISTINCT a.owner_org), '{}'::uuid[])
+      INTO limited_app_orgs
+      FROM public.apps a
+      WHERE a.app_id = ANY(api_key.limited_to_apps);
+    END IF;
   END IF;
 
   -- If no valid API key v_user_id yet, try to get from public.identity.
@@ -7860,6 +7901,10 @@ BEGIN
     AND (
       NOT has_limited_orgs
       OR ao.org_uuid = ANY(limited_orgs)
+    )
+    AND (
+      NOT has_limited_app_orgs
+      OR ao.org_uuid = ANY(limited_app_orgs)
     );
 END;
 $$;
@@ -23222,9 +23267,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INS
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "service_role";
-
-
-
 
 
 

@@ -4,7 +4,7 @@ import type { Database } from '../../utils/supabase.types.ts'
 import { lockOnboardingApp, unlockOnboardingApp } from '../../utils/demo.ts'
 import { simpleError } from '../../utils/hono.ts'
 import { cloudlog } from '../../utils/logging.ts'
-import { hasOrgRight, supabaseAdmin, updateOrCreateChannel } from '../../utils/supabase.ts'
+import { hasAppRightApikey, hasOrgRight, supabaseAdmin, updateOrCreateChannel } from '../../utils/supabase.ts'
 
 /** Request body for creating a demo app */
 export interface CreateDemoApp {
@@ -327,6 +327,12 @@ export async function createDemoApp(c: Context<MiddlewareKeyVariables>, body: Cr
     ? { app_id: requestedAppId }
     : await getLatestPendingAppForOrg(c, supabase, body.owner_org)
   const lockedAppId = resolvedApp.app_id
+
+  const appApiKey = auth.apikey?.key ?? c.get('capgkey')
+  if (appApiKey && !(await hasAppRightApikey(c, lockedAppId, auth.userId, 'write', appApiKey))) {
+    throw simpleError('cannot_access_application', "You can't access this app with this API key", { org_id: body.owner_org, app_id: lockedAppId })
+  }
+
   const onboardingLock = await lockOnboardingApp(c, lockedAppId)
 
   try {
